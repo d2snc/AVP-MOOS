@@ -77,7 +77,7 @@ while True:
 
     current_img = np.frombuffer(image_data, dtype=np.uint8)
     image = cv2.imdecode(current_img, cv2.IMREAD_UNCHANGED)
-    brilho_aumentado = 50
+    brilho_aumentado = 1
     imagem_brilho_aumentado = cv2.add(image, brilho_aumentado)
 
     current_img = np.array(imagem_brilho_aumentado)

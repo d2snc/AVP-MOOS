@@ -588,4 +588,114 @@ class App(customtkinter.CTk):
         #Cria o mapa
         
         self.map_widget = TkinterMapView(self.frame_right, corner_radius=0,use_database_only=True,database_path=self.database_path)
-        self.map_widget.grid(row=1, rowspan=1, column=0, columnspan=3, sti
+        self.map_widget.grid(row=1, rowspan=1, column=0, columnspan=3, sticky="nswe", padx=(0, 0), pady=(0, 0))
+        self.map_widget.set_overlay_tile_server("http://tiles.openseamap.org/seamark//{z}/{x}/{y}.png")
+        self.map_widget.set_zoom(15)     
+        self.map_widget.set_position(self.nav_lat,self.nav_long) #Atualiza com a última posição do navio
+
+        self.entry = customtkinter.CTkEntry(master=self.frame_right,
+                                            placeholder_text="Digite Endereço")
+        self.entry.grid(row=0, column=0, sticky="we", padx=(12, 0), pady=12)
+        self.entry.bind("<Return>", self.search_event)
+
+        self.button_6 = customtkinter.CTkButton(master=self.frame_right,
+                                                text="Search",
+                                                width=90,
+                                                command=self.search_event)
+        self.button_6.grid(row=0, column=1, sticky="w", padx=(12, 0), pady=12)
+
+        #Plota o meu navio
+        self.ship_imagefile = Image.open(os.path.join(self.current_path, "images", "ship_red"+str(int(self.nav_heading))+".png"))
+        self.ship_image = ImageTk.PhotoImage(self.ship_imagefile)
+        self.marker_1 = self.map_widget.set_marker(self.nav_lat, self.nav_long, text="VSNT-Lab", icon=self.ship_image, command=self.marker_callback)
+        self.marker_1.change_icon(self.ship_image)
+        
+
+        #Crio a barra de pesquisas
+        
+        self.entry = customtkinter.CTkEntry(master=self.frame_right,
+                                            placeholder_text="Digite o Endereço")
+        self.entry.grid(row=0, column=0, sticky="we", padx=(12, 0), pady=12)
+        self.entry.bind("<Return>", self.search_event)
+
+        self.button_6 = customtkinter.CTkButton(master=self.frame_right,
+                                                text="Busca",
+                                                width=90,
+                                                command=self.search_event)
+        self.button_6.grid(row=0, column=1, sticky="w", padx=(12, 0), pady=12)
+        self.button_4.configure(command=self.destroy_maps,text="Desativar Mapas")
+
+    def destroy_camera(self):
+        self.label_widget.destroy() #Destruo o label da câmera
+        self.button_3.configure(command=self.destroy_camera,text="Câmera")
+        #Crio o label de novo
+        self.label_widget = customtkinter.CTkLabel(self,textvariable=self.text_var)
+        if (self.map_widget.winfo_exists() == 1): #Checa se o mapa está ativo
+            self.label_widget.grid(row=0, rowspan=1, column=2, columnspan=3, sticky="nswe")
+        else:
+            self.label_widget.grid(row=0, rowspan=1, column=1, columnspan=3, sticky="nswe")
+        self.button_3.configure(command=self.open_camera) #Configuro para abrir a câmera novamente
+
+    def open_camera(self):
+            self.button_3.configure(command=self.destroy_camera,text="Desativar Câmera") #Coloco o botão para tirar a câmera
+  
+            # Capture the video frame by frame
+            _, frame = self.vid.read()
+        
+            # Convert image from one color space to other
+            opencv_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
+        
+            # Capture the latest frame and transform to image
+            captured_image = Image.fromarray(opencv_image)
+        
+            # Convert captured image to photoimage
+            photo_image = ImageTk.PhotoImage(image=captured_image)
+        
+            # Displaying photoimage in the label
+            self.label_widget.photo_image = photo_image
+        
+            # Configure image in the label
+            self.label_widget.configure(image=photo_image)
+        
+            # Repeat the same process after every 10 seconds
+            self.label_widget.after(10, self.open_camera)
+
+
+    def search_event(self, event=None):
+        self.map_widget.set_address(self.entry.get())
+
+    def set_marker_event(self):
+        current_position = self.map_widget.get_position()
+        self.marker_list.append(self.map_widget.set_marker(current_position[0], current_position[1]))
+
+    def clear_marker_event(self):
+        for marker in self.marker_list:
+            marker.delete()
+
+    def change_appearance_mode(self, new_appearance_mode: str):
+        customtkinter.set_appearance_mode(new_appearance_mode)
+
+    def change_map(self, new_map: str):
+        if new_map == "OpenStreetMap":
+            self.map_widget.set_tile_server("https://a.tile.openstreetmap.org/{z}/{x}/{y}.png")
+            self.map_widget.set_overlay_tile_server("http://tiles.openseamap.org/seamark//{z}/{x}/{y}.png")
+        elif new_map == "Google normal":
+            self.map_widget.set_tile_server("https://mt0.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}&s=Ga", max_zoom=22)
+            self.map_widget.set_overlay_tile_server("http://tiles.openseamap.org/seamark//{z}/{x}/{y}.png")
+        elif new_map == "Google satellite":
+            self.map_widget.set_tile_server("https://mt0.google.com/vt/lyrs=s&hl=en&x={x}&y={y}&z={z}&s=Ga", max_zoom=22)
+            self.map_widget.set_overlay_tile_server("http://tiles.openseamap.org/seamark//{z}/{x}/{y}.png")
+
+    def on_closing(self, event=0):
+        self.destroy()
+
+    def start(self):
+        self.mainloop()
+
+
+
+
+
+if __name__ == "__main__":
+    app = App()
+    app.start()
