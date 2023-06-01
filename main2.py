@@ -4,8 +4,20 @@ import os
 import tkinter
 import time
 import pymoos
+import socket
 from tkintermapview import TkinterMapView
 from PIL import Image, ImageTk
+from pyais import decode
+
+# Define the IP address and port to connect to
+ip_address = '201.76.184.242'
+port = 8000
+
+# Create a TCP socket
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+# Connect to the server
+sock.connect((ip_address, port))
 
 
 customtkinter.set_default_color_theme("blue")
@@ -29,14 +41,26 @@ class App(customtkinter.CTk):
         self.bind("<Command-q>", self.on_closing)
         self.bind("<Command-w>", self.on_closing)
         self.createcommand('tk::mac::Quit', self.on_closing)
+        
+        #Variável auxiliar para ligar AIS da praticagem
+        self.check_var = tkinter.StringVar(self,"off")
 
+        #Auxilio na plotagem dos AIS
         self.marker_list = []
 
         #Init pymoos comms
         self.comms = pymoos.comms()
 
         #Variáveis auxiliares
+        self.mmsi_list = []
+        self.markers_ais = {} #Dicionário para colocar os marcadores
+        self.markers_image = {} #Dicionário para imagens dos navios AIS
         self.camera_on = False
+        self.nav_lat = 0
+        self.nav_long = 0
+        self.nav_heading = 0
+        self.nav_speed = 0
+        self.last_ais_msg = None
 
         #Carrego imagens para os ícones
         self.current_path = os.path.join(os.path.dirname(os.path.abspath(__file__)))
@@ -57,8 +81,10 @@ class App(customtkinter.CTk):
         self.frame_right.grid(row=0, column=1, rowspan=1, pady=0, padx=0, sticky="nsew")
 
         # ============ frame_left ============
-
-        self.frame_left.grid_rowconfigure(5, weight=1)
+        self.frame_left.grid_rowconfigure(6, weight=1) #Para deixar igualmente espaçados
+        self.frame_left.grid_rowconfigure(7, weight=1)
+        self.frame_left.grid_rowconfigure(8, weight=1)
+        self.frame_left.grid_rowconfigure(9, weight=1)
 
         self.button_1 = customtkinter.CTkButton(master=self.frame_left,
                                                 text="Colocar Marcador",
@@ -85,19 +111,50 @@ class App(customtkinter.CTk):
                                                 command=self.activate_control)
         self.button_5.grid(pady=(20, 0), padx=(20, 20), row=4, column=0)
 
+        self.sss_button = customtkinter.CTkButton(master=self.frame_left,
+                                                text="SSS",
+                                                command=self.activate_sss)
+        self.sss_button.grid(pady=(20, 0), padx=(20, 20), row=5, column=0)
+
+        #Texto da Latitude
+
+        self.label_lat = customtkinter.CTkLabel(master=self.frame_left, text="Latitude: "+str(self.nav_lat))
+        self.label_lat.configure(font=("Segoe UI", 15))
+        self.label_lat.grid(row=6, column=0,  padx=(20,20), pady=(50,0), sticky="")
+
+        #Texto da Longitude
+
+        self.label_long = customtkinter.CTkLabel(master=self.frame_left, text="Longitude: "+str(self.nav_long))
+        self.label_long.configure(font=("Segoe UI", 15))
+        self.label_long.grid(row=7, column=0,  padx=(20,20), pady=(0,20), sticky="")
+
+        #Texto do rumo
+
+        self.label_heading = customtkinter.CTkLabel(master=self.frame_left, text="Rumo: "+str(self.nav_heading))
+        self.label_heading.configure(font=("Segoe UI", 25))
+        self.label_heading.grid(row=8, column=0,  padx=(20,20), pady=(20,20), sticky="")
+
+        #Texto da veloc
+
+        self.label_speed = customtkinter.CTkLabel(master=self.frame_left, text="Velocidade: "+str(self.nav_speed)+" nós",)
+        self.label_speed.configure(font=("Segoe UI", 25))
+        self.label_speed.grid(row=9, column=0,  padx=(20,20), pady=(20,20), sticky="")
+
         
 
         self.map_label = customtkinter.CTkLabel(self.frame_left, text="Servidor de Mapas:", anchor="w")
-        self.map_label.grid(row=6, column=0, padx=(20, 20), pady=(20, 0))
+        self.map_label.grid(row=10, column=0, padx=(20, 20), pady=(20, 0))
         self.map_option_menu = customtkinter.CTkOptionMenu(self.frame_left, values=["OpenStreetMap", "Google normal", "Google satellite"],
                                                                        command=self.change_map)
-        self.map_option_menu.grid(row=7, column=0, padx=(20, 20), pady=(10, 0))
+        self.map_option_menu.grid(row=11, column=0, padx=(20, 20), pady=(10, 0))
 
         self.appearance_mode_label = customtkinter.CTkLabel(self.frame_left, text="Aparência:", anchor="w")
-        self.appearance_mode_label.grid(row=8, column=0, padx=(20, 20), pady=(20, 0))
+        self.appearance_mode_label.grid(row=12, column=0, padx=(20, 20), pady=(20, 0))
         self.appearance_mode_optionemenu = customtkinter.CTkOptionMenu(self.frame_left, values=["Light", "Dark", "System"],
                                                                        command=self.change_appearance_mode)
-        self.appearance_mode_optionemenu.grid(row=9, column=0, padx=(20, 20), pady=(10, 20))
+        self.appearance_mode_optionemenu.grid(row=13, column=0, padx=(20, 20), pady=(10, 20))
+
+        
 
         # ============ frame_right ============
 
@@ -120,10 +177,20 @@ class App(customtkinter.CTk):
         self.entry.bind("<Return>", self.search_event)
 
         self.button_6 = customtkinter.CTkButton(master=self.frame_right,
-                                                text="Search",
+                                                text="Buscar",
                                                 width=90,
                                                 command=self.search_event)
         self.button_6.grid(row=0, column=1, sticky="w", padx=(12, 0), pady=12)
+
+        self.botao_centralizar_navio = customtkinter.CTkButton(master=self.frame_right,
+                                                text="Centralizar Navio",
+                                                width=90,
+                                                command=self.centralizar_navio)
+        self.botao_centralizar_navio.grid(row=0, column=2, sticky="w", padx=(12, 0), pady=12)
+
+        #Botão que liga/desliga AIS da praticagem
+        self.checkbox = customtkinter.CTkCheckBox(master=self.frame_left, text="AIS Praticagem", command=self.update_lista_praticagem(),variable=self.check_var, onvalue="on", offvalue="off")
+        self.checkbox.grid(row=14, column=0, padx=(20, 20), pady=(10, 20))
 
         ###Imagem da camera
         self.vid = cv2.VideoCapture('teste.mp4')
@@ -147,7 +214,7 @@ class App(customtkinter.CTk):
         self.appearance_mode_optionemenu.set("Dark")
 
         #Teste de marcadores
-        self.marker_1 = self.map_widget.set_marker(-22.910369249774234, -43.15891349244546, text="Meu Navio", icon=ship_image, command=self.marker_callback)
+        self.marker_1 = self.map_widget.set_marker(-22.910369249774234, -43.15891349244546, text="VSNT-Lab", icon=ship_image, command=self.marker_callback)
 
         #Conexão com a database do MOOS
         
@@ -156,18 +223,38 @@ class App(customtkinter.CTk):
         self.comms.run('localhost', 9000, 'avp-moos')
 
         #Loop para atualizar a posição do navio
-        #Variáveis iniciais
-        self.nav_lat = 0
-        self.nav_long = 0
-        self.nav_heading = 0
+        
         #Loop principal
-        self.update_ship_position()
+        self.update_ship_position() #Loop para atualizar a posição do navio
+        self.update_gui() #Loop para atualizar dados na GUI
+        self.update_ais_contacts() #Loop para atualizar os contatos AIS
+        #self.update_lista_praticagem() #Loop para atualizar a lista de praticagem
+
+
+
+    def activate_sss(self):
+        os.popen('python3 funcionando_recebendo_img.py')
+
+    #Função para centralizar o navio na tela
+    def centralizar_navio(self):
+        self.map_widget.set_position(self.nav_lat,self.nav_long)
+
+    #Função para converter de graus para graus, minutos e segundos
+    def decimal_degrees_to_dms(self,latitude):
+        degrees = int(latitude)
+        decimal_minutes = (latitude - degrees) * 60
+        minutes = int(decimal_minutes)
+        seconds = (decimal_minutes - minutes) * 60
+        return degrees, minutes, seconds
 
     #Funções para comunicação do Pymoos
     def onc(self):
         self.comms.register('NAV_LAT', 0)
         self.comms.register('NAV_LONG', 0)
         self.comms.register('NAV_HEADING', 0)
+        self.comms.register('NAV_SPEED', 0)
+        #self.comms.register('LAST_AIS_MSG', 0)
+        self.comms.register('MSG_UDP', 0)
         return True
     
     def onm(self):
@@ -183,14 +270,121 @@ class App(customtkinter.CTk):
                 self.nav_long = val
             elif msg.name() == 'NAV_HEADING':
                 self.nav_heading = val
+            elif msg.name() == 'NAV_SPEED':
+                self.nav_speed = val
+            elif msg.name() == 'MSG_UDP':
+                val = msg.string()
+                #print(val)
+                if val.startswith('!AIVDM'):
+                    #self.last_ais_msg = val
+                    print(val)
+                
             
         return True
     
+    
+    #Atualiza a lista de ctts AIS q vem da praticagem - Lembrar sempre de executar funções no final do programa
+    
+    def update_lista_praticagem(self): 
+        if self.check_var.get() == "on":
+            global sock
+            data = sock.recv(1024)
+            if not data:
+                pass
+            print("Received:", data.decode())
+            mensagens_ais = data.decode().split('\r\n')
+            #Create a marker for each ais message
+            if (self.map_widget.winfo_exists() == 1): #Verifica se o mapa existe
+                for msg in mensagens_ais:
+                    decoded_msg = self.decode_ais_msg(msg) #Decodifico a msg
+                    if decoded_msg is not None and hasattr(decoded_msg, 'heading') and decoded_msg.mmsi not in self.mmsi_list: #Caso não esteja na lista
+                        self.mmsi_list.append(decoded_msg.mmsi) #Adiciono na lista
+                        #Crio o marker
+                        if int(decoded_msg.heading) > 360: 
+                            decoded_msg.heading = int(decoded_msg.heading) - 360 #Corrige o ângulo do navio caso seja maior q 360
+                        self.markers_image[decoded_msg.mmsi] = Image.open(os.path.join(self.current_path, "images", "ship_green"+str(int(decoded_msg.heading))+".png"))
+                        ship_image = ImageTk.PhotoImage(self.markers_image[decoded_msg.mmsi])
+                        self.markers_ais[decoded_msg.mmsi] = self.map_widget.set_marker(decoded_msg.lat, decoded_msg.lon, text="Contato_"+str(decoded_msg.mmsi), icon=ship_image, command=self.marker_callback)
+                    elif hasattr(decoded_msg, 'heading') and decoded_msg is not None: #Caso já esteja na lista o navio
+                        #Atualizo o marcador
+                        self.markers_ais[decoded_msg.mmsi].set_position(decoded_msg.lat,decoded_msg.lon)
+                        if int(decoded_msg.heading) > 360: 
+                            decoded_msg.heading = int(decoded_msg.heading) - 360 #Corrige o ângulo do navio caso seja maior q 360
+                        self.markers_image[decoded_msg.mmsi] = Image.open(os.path.join(self.current_path, "images", "ship_green"+str(int(decoded_msg.heading))+".png"))
+                        ship_image = ImageTk.PhotoImage(self.markers_image[decoded_msg.mmsi])
+                        self.markers_ais[decoded_msg.mmsi].change_icon(ship_image)
+        else:
+            pass
+
+
+        self.after(1000,self.update_lista_praticagem) #Coloco essa função em loop para repetir a cada 1 seg dentro do programa
+
+    #TODO Adicionar função que ao clicar em um contato AIS abra um pop-up mostrando informações do navio
+    #Decodificar msgs AIS - Coloquei estático pq a função decode não usa self
+    @staticmethod
+    def decode_ais_msg(ais_msg):
+        ais_msg = ais_msg.encode()
+        #Catch errors and let them pass
+        try:
+            ais_msg = decode(ais_msg)
+        except:
+            ais_msg = None #Por enquanto vou retornar None caso esteja com erro
+            pass
+        return ais_msg
+        
+
+    #Função para atualizar os contatos AIS
+    def update_ais_contacts(self):
+        #Decodifico a msg AIS
+        if self.last_ais_msg is not None:
+            ais_msg = self.last_ais_msg
+            self.last_ais_msg = self.decode_ais_msg(ais_msg) 
+
+        #Crio o marker no mapa
+        if (self.map_widget.winfo_exists() == 1): #Verifica se o mapa existe
+            if self.last_ais_msg is not None and self.last_ais_msg.mmsi not in self.mmsi_list: #Verifica se o mmsi já não está na lista
+                #Adiciono código mmsi a lista
+                self.mmsi_list.append(self.last_ais_msg.mmsi)
+                #Imagem do marcador - coloquei isso pq alguns vinham maior q 360
+                if int(self.last_ais_msg.heading) > 360: 
+                    self.last_ais_msg.heading = int(self.last_ais_msg.heading) - 360 #Corrige o ângulo do navio caso seja maior q 360
+                self.markers_image[self.last_ais_msg.mmsi] = Image.open(os.path.join(self.current_path, "images", "ship_green"+str(int(self.last_ais_msg.heading))+".png"))
+                ship_image = ImageTk.PhotoImage(self.markers_image[self.last_ais_msg.mmsi])
+                
+                #Crio o marcador 
+                self.markers_ais[self.last_ais_msg.mmsi] = self.map_widget.set_marker(self.last_ais_msg.lat, self.last_ais_msg.lon, text="Contato_"+str(self.last_ais_msg.mmsi), icon=ship_image, command=self.marker_callback)
+                
+            elif self.last_ais_msg is not None: #Caso o navio já esteja na lista
+                #Atualizo a posição do marcador
+                self.markers_ais[self.last_ais_msg.mmsi].set_position(self.last_ais_msg.lat,self.last_ais_msg.lon)
+                #Atualizo a imagem do marcador
+                if int(self.last_ais_msg.heading) > 360: 
+                    self.last_ais_msg.heading = int(self.last_ais_msg.heading) - 360 #Corrige o ângulo do navio caso seja maior q 360
+                self.markers_image[self.last_ais_msg.mmsi] = Image.open(os.path.join(self.current_path, "images", "ship_green"+str(int(self.last_ais_msg.heading))+".png"))
+                ship_image = ImageTk.PhotoImage(self.markers_image[self.last_ais_msg.mmsi])
+                self.markers_ais[self.last_ais_msg.mmsi].change_icon(ship_image)
+        self.after(1000,self.update_ais_contacts) #Coloco essa função em loop para repetir a cada 1 seg dentro do programa
+
+        
+        
+
+    
+    #Função para atualizar dados na GUI:
+    def update_gui(self):
+        degrees, minutes, seconds = self.decimal_degrees_to_dms(self.nav_lat)
+        self.label_lat.configure(text=f"Latitude: {degrees}° {minutes}' {seconds:.2f}\"")
+        degrees, minutes, seconds = self.decimal_degrees_to_dms(self.nav_long)
+        self.label_long.configure(text=f"Longitude: {degrees}° {minutes}' {seconds:.2f}\"")
+        self.label_heading.configure(text="Rumo: "+str(int(self.nav_heading))+" °")
+        self.label_speed.configure(text="Velocidade: "+str(int(self.nav_speed))+" nós")
+        self.after(1000,self.update_gui)
+
+
     #Função em loop utilizada para atualizar a posição do meu navio
     def update_ship_position(self):
         if (self.map_widget.winfo_exists() == 1): #Checa se existe o mapa
             self.marker_1.set_position(self.nav_lat,self.nav_long)
-            self.map_widget.set_position(self.nav_lat,self.nav_long) #Centraliza o mapa no navio, colocar uma opção para ativar ela 
+            #self.map_widget.set_position(self.nav_lat,self.nav_long) #Centraliza o mapa no navio, colocar uma opção para ativar ela 
             #self.map_widget.set_zoom(15)
             self.label_widget.configure(text=str(self.nav_lat)+" "+str(self.nav_long))
 
@@ -201,41 +395,14 @@ class App(customtkinter.CTk):
         else:
             print("Mapa inativo")
 
-        self.after(1000,self.update_ship_position)
+        self.after(1000,self.update_ship_position) #Coloco essa função em loop para repetir a cada 1 seg dentro do programa
 
 
     #Funções da GUI abaixo
 
-    def marker_callback(self,marker):
+    def marker_callback(self,marker): #O que acontece quando clica no marker
         print(marker.text)
-        coordinates = [
-        (-22.910369249774234, -43.15891349244546),
-        (-22.910480263848627, -43.15912266093175),
-        (-22.910613862916277, -43.15931490120975),
-        (-22.910754142521347, -43.15948326987964),
-        (-22.910887741588997, -43.15964915604181),
-        (-22.911019573899215, -43.15982732964322),
-        (-22.911150820070173, -43.16000388549634),
-        (-22.91128104658741, -43.16018438349646),
-        (-22.911413870960102, -43.16036625051805),
-        (-22.911547741266644, -43.160550184006156)
-        ]
-        
-        if self.i==9:
-            self.i == 0
-        else:
-            self.i+=1
-        
-        marker.set_position(coordinates[self.i][0],coordinates[self.i][1])
 
-        #Rotate ship
-        #self.ship_imagefile = Image.open(os.path.join(self.current_path, "images", "ship_red0.png"))
-        self.r+=15
-        self.ship_imagefile = Image.open(os.path.join(self.current_path, "images", "ship_red"+str(self.r)+".png"))
-        ship_image = ImageTk.PhotoImage(self.ship_imagefile)
-        marker.change_icon(ship_image)
-        
-        #marker.delete()
 
     def destroy_control(self): #Destrói o frame com o controle
         self.button_5.configure(command=self.activate_control,text="Controle Remoto")
@@ -351,6 +518,8 @@ class App(customtkinter.CTk):
         self.map_widget = TkinterMapView(self.frame_right, corner_radius=0,use_database_only=True,database_path=self.database_path)
         self.map_widget.grid(row=1, rowspan=1, column=0, columnspan=3, sticky="nswe", padx=(0, 0), pady=(0, 0))
         self.map_widget.set_overlay_tile_server("http://tiles.openseamap.org/seamark//{z}/{x}/{y}.png")
+        self.map_widget.set_zoom(15)     
+        self.map_widget.set_position(self.nav_lat,self.nav_long) #Atualiza com a última posição do navio
 
         self.entry = customtkinter.CTkEntry(master=self.frame_right,
                                             placeholder_text="Digite Endereço")
