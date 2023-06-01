@@ -12,6 +12,9 @@ from auvlib.data_tools import jsf_data, utils
 from tkintermapview import TkinterMapView
 from PIL import Image, ImageTk
 from pyais import decode
+#Para safar imagens truncadas do sonar
+from PIL import ImageFile
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 # Configuração do AIS da PRT
@@ -210,6 +213,11 @@ class App(customtkinter.CTk):
                                                 command=self.centralizar_navio)
         self.botao_centralizar_navio.grid(row=0, column=2, sticky="w", padx=(12, 0), pady=12)
 
+        #Funções no mapa inicial
+        self.map_widget.add_right_click_menu_command(label="Adicionar mina",
+                                            command=self.add_mina,
+                                            pass_coords=True)
+
         
         #Botão que liga/desliga AIS da praticagem
         self.checkbox = customtkinter.CTkCheckBox(master=self.frame_left, text="AIS Praticagem", command=self.update_lista_praticagem(),variable=self.check_var, onvalue="on", offvalue="off")
@@ -235,6 +243,8 @@ class App(customtkinter.CTk):
         #self.map_widget.set_address("Rio de Janeiro")
         self.map_option_menu.set("Google normal")
         self.appearance_mode_optionemenu.set("Dark")
+
+        
 
         #Teste de marcadores
         self.marker_1 = self.map_widget.set_marker(-22.910369249774234, -43.15891349244546, text="VSNT-Lab", icon=ship_image, command=self.marker_callback)
@@ -342,10 +352,20 @@ class App(customtkinter.CTk):
 
         self.after(1000,self.update_lista_praticagem) #Coloco essa função em loop para repetir a cada 1 seg dentro do programa
 
+
+    #Adiciona mina no mapa
+    def add_mina(self,coords):
+        mina_image = ImageTk.PhotoImage(Image.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "images", "mine.png")).resize((70, 70)))
+        print("Adicionar Possível Mina:", coords)
+        mina_marker = self.map_widget.set_marker(coords[0], coords[1], text="Possível mina",image=mina_image)
+    
+
+    
+
     #Plota a imagem vinda do sonar na carta náutica
     def receive_sonar(self):
         #Recebo a imagem pelo socket
-        bufferSize = 1024
+        bufferSize = 4096
         bytesAddressPair = self.sonar_socket.recvfrom(bufferSize)
         message = bytesAddressPair[0]
         image_data = b""
@@ -375,11 +395,11 @@ class App(customtkinter.CTk):
             #Plota a imagem recebida pelo sonar
             #Crio um marker fixo
             if self.markers_sonar is None:
-                self.markers_sonar= self.map_widget.set_marker(self.nav_lat, self.nav_long, icon=photo)
-                #mudo a posição do icone
-                self.markers_sonar.icon_anchor = 'n'
+                self.markers_sonar= self.map_widget.set_marker(self.nav_lat, self.nav_long, icon=photo,icon_anchor='n') #ancorei no norte
+                
             else: #Atualiza a imagem
                 self.markers_sonar.change_icon(photo)
+                
 
             
             #Aumenta o contador
