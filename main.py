@@ -15,6 +15,8 @@ from pyais import decode
 #Para safar imagens truncadas do sonar
 from PIL import ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
+from tkinter import ttk
+
 
 
 # Configuração do AIS da PRT
@@ -584,6 +586,10 @@ class App(customtkinter.CTk):
         
         self.slider_1 = customtkinter.CTkSlider(self.slider_progressbar_frame, from_=-30, to=30, number_of_steps=60)
         self.slider_1.grid(row=4, column=0, padx=(20, 10), pady=(15, 15), sticky="ew")
+        self.bind("<Left>", self.decrement_slider1) #Configuração para teclas de seta
+        self.bind("<Right>", self.increment_slider1)
+        self.bind("<Up>", self.increment_slider2)
+        self.bind("<Down>", self.decrement_slider2)
         self.slider_2 = customtkinter.CTkSlider(self.slider_progressbar_frame, from_=0, to=1, number_of_steps=100, orientation="vertical",height=400)
         self.slider_2.grid(row=0, column=1, rowspan=5, padx=(10, 15), pady=(20, 10))
         self.slider_2.set(0) #Zero o slider de máquinas
@@ -614,11 +620,35 @@ class App(customtkinter.CTk):
         
         #Menu para escolha
         self.combobox = customtkinter.CTkOptionMenu(master=self.slider_progressbar_frame,
-                                       values=["Manual", "Teclado", "Joystick"],
+                                       values=["Manual", "Joystick"],
                                        command=self.optionmenu_callback)
         self.combobox.grid(row=10, column=0, rowspan=1,columnspan=2, padx=(5,10), pady=(0,205), sticky="")
 
 
+    def decrement_slider1(self, event):
+        current_value = self.slider_1.get()
+        new_value = current_value - 1
+        self.slider_1.set(new_value)
+        self.update_value_leme(new_value)
+
+    def increment_slider1(self, event):
+        current_value = self.slider_1.get()
+        new_value = current_value + 1
+        self.slider_1.set(new_value)
+        self.update_value_leme(new_value)
+
+    def decrement_slider2(self, event):
+        current_value = self.slider_2.get()
+        new_value = current_value - 0.01
+        self.slider_2.set(new_value)
+        self.update_value_maquinas(new_value)
+
+    def increment_slider2(self, event):
+        current_value = self.slider_2.get()
+        new_value = current_value + 0.01
+        self.slider_2.set(new_value)
+        self.update_value_maquinas(new_value)
+        
     def optionmenu_callback(self,choice):
         print("optionmenu dropdown clicked:", choice)
 
