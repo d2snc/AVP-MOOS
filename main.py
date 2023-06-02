@@ -525,6 +525,9 @@ class App(customtkinter.CTk):
         self.comms.notify('MOOS_MANUAL_OVERIDE', 'false',pymoos.time())
         self.controle_manual = False
 
+        #Desativa o pHelmIvP no MOOS
+        self.comms.notify('DEPLOY', 'false',pymoos.time())
+
 
         
 
