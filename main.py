@@ -81,6 +81,8 @@ class App(customtkinter.CTk):
         self.nav_heading = 0
         self.nav_speed = 0
         self.last_ais_msg = None
+        self.controle_manual = False
+        self.contador_ativacao_controle = 0
 
         #Carrego imagens para os ícones
         self.current_path = os.path.join(os.path.dirname(os.path.abspath(__file__)))
@@ -282,12 +284,21 @@ class App(customtkinter.CTk):
 
     #Funções para comunicação do Pymoos
     def onc(self):
+        #Variáveis do MOOS para exibição do navio 
         self.comms.register('NAV_LAT', 0)
         self.comms.register('NAV_LONG', 0)
         self.comms.register('NAV_HEADING', 0)
         self.comms.register('NAV_SPEED', 0)
         #self.comms.register('LAST_AIS_MSG', 0)
         self.comms.register('MSG_UDP', 0)
+
+        #Variáveis do MOOS para controle do navio
+        self.comms.register('DEPLOY', 0)
+        self.comms.register('MOOS_MANUAL_OVERIDE', 0)
+        self.comms.register('RETURN', 0)
+        self.comms.register('DESIRED_RUDDER', 0)
+        self.comms.register('DESIRED_THRUST', 0)
+        
         return True
     
     def onm(self):
@@ -508,9 +519,39 @@ class App(customtkinter.CTk):
         self.slider_2.destroy()
         #self.combobox.destroy()
 
+        #Desativa o controle manual no MOOS
+        self.comms.notify('MOOS_MANUAL_OVERIDE', 'false',pymoos.time())
+        self.controle_manual = False
+
+
         
 
     def activate_control(self): #Cria o frame com o controle
+        
+        #Envia a configuração para o MOOS-Ivp para o controle manual começar
+        if self.controle_manual is False:
+            if self.contador_ativacao_controle == 0: #na primeira ativação
+                ## Comandos para iniciar o pHelmIvP
+                #Só executa quando lança a função pela primeira vez
+                #Notifico o deploy=true
+                self.comms.notify('DEPLOY', 'true',pymoos.time()) 
+                #Notifico o manual override = false
+                self.comms.notify('MOOS_MANUAL_OVERIDE', 'false',pymoos.time())
+                #Notifico o return = false
+                self.comms.notify('RETURN', 'false',pymoos.time())
+
+                #Após iniciar manda o comando para o controle manual
+                time.sleep(0.5)
+                self.comms.notify('MOOS_MANUAL_OVERIDE', 'true',pymoos.time())
+                #Seto a variável auxiliar para True
+                self.controle_manual = True
+                self.contador_ativacao_controle +=1
+            else:
+                #Apenas notifico o manual override = true
+                self.comms.notify('MOOS_MANUAL_OVERIDE', 'true',pymoos.time())
+                self.controle_manual = True
+
+
         self.button_5.configure(command=self.destroy_control,text="Desativar Controle Remoto")
         #Frame com slider para controle de velocidade   
 
@@ -582,14 +623,22 @@ class App(customtkinter.CTk):
         print("optionmenu dropdown clicked:", choice)
 
     def update_value_maquinas(self,other):
-        print(other)
+        #print(other)
         self.progressbar_3.set(self.slider_2.get())
         self.label_machine.configure(text=str(int(self.slider_2.get()*100))+"%")
 
+        if self.controle_manual is True:
+            self.comms.notify('DESIRED_THRUST', int(self.slider_2.get()*100),pymoos.time())
+            print("DESIRED_THRUST: ", int(self.slider_2.get()))
+
     def update_value_leme(self,other):
-        print(other)
+        #print(other)
         self.progressbar_2.set(self.slider_1.get())
         self.label_leme.configure(text=str(int(self.slider_1.get()))+"°")
+
+        if self.controle_manual is True:
+            self.comms.notify('DESIRED_RUDDER', int(self.slider_1.get()),pymoos.time())
+            print("DESIRED_RUDDER: ", int(self.slider_1.get()))
         
 
     def destroy_maps(self):
