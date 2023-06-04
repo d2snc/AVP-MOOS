@@ -15,6 +15,8 @@ from pyais import decode
 #Para safar imagens truncadas do sonar
 from PIL import ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
+from tkinter import ttk
+
 
 
 # Configuração do AIS da PRT
@@ -81,6 +83,8 @@ class App(customtkinter.CTk):
         self.nav_heading = 0
         self.nav_speed = 0
         self.last_ais_msg = None
+        self.controle_manual = False
+        self.contador_ativacao_controle = 0
 
         #Carrego imagens para os ícones
         self.current_path = os.path.join(os.path.dirname(os.path.abspath(__file__)))
@@ -282,12 +286,21 @@ class App(customtkinter.CTk):
 
     #Funções para comunicação do Pymoos
     def onc(self):
+        #Variáveis do MOOS para exibição do navio 
         self.comms.register('NAV_LAT', 0)
         self.comms.register('NAV_LONG', 0)
         self.comms.register('NAV_HEADING', 0)
         self.comms.register('NAV_SPEED', 0)
         #self.comms.register('LAST_AIS_MSG', 0)
         self.comms.register('MSG_UDP', 0)
+
+        #Variáveis do MOOS para controle do navio
+        self.comms.register('DEPLOY', 0)
+        self.comms.register('MOOS_MANUAL_OVERIDE', 0)
+        self.comms.register('RETURN', 0)
+        self.comms.register('DESIRED_RUDDER', 0)
+        self.comms.register('DESIRED_THRUST', 0)
+        
         return True
     
     def onm(self):
@@ -508,9 +521,42 @@ class App(customtkinter.CTk):
         self.slider_2.destroy()
         #self.combobox.destroy()
 
+        #Desativa o controle manual no MOOS
+        self.comms.notify('MOOS_MANUAL_OVERIDE', 'false',pymoos.time())
+        self.controle_manual = False
+
+        #Desativa o pHelmIvP no MOOS
+        self.comms.notify('DEPLOY', 'false',pymoos.time())
+
+
         
 
     def activate_control(self): #Cria o frame com o controle
+        
+        #Envia a configuração para o MOOS-Ivp para o controle manual começar
+        if self.controle_manual is False:
+            if self.contador_ativacao_controle == 0: #na primeira ativação
+                ## Comandos para iniciar o pHelmIvP
+                #Só executa quando lança a função pela primeira vez
+                #Notifico o deploy=true
+                self.comms.notify('DEPLOY', 'true',pymoos.time()) 
+                #Notifico o manual override = false
+                self.comms.notify('MOOS_MANUAL_OVERIDE', 'false',pymoos.time())
+                #Notifico o return = false
+                self.comms.notify('RETURN', 'false',pymoos.time())
+
+                #Após iniciar manda o comando para o controle manual
+                time.sleep(0.5)
+                self.comms.notify('MOOS_MANUAL_OVERIDE', 'true',pymoos.time())
+                #Seto a variável auxiliar para True
+                self.controle_manual = True
+                self.contador_ativacao_controle +=1
+            else:
+                #Apenas notifico o manual override = true
+                self.comms.notify('MOOS_MANUAL_OVERIDE', 'true',pymoos.time())
+                self.controle_manual = True
+
+
         self.button_5.configure(command=self.destroy_control,text="Desativar Controle Remoto")
         #Frame com slider para controle de velocidade   
 
@@ -543,6 +589,10 @@ class App(customtkinter.CTk):
         
         self.slider_1 = customtkinter.CTkSlider(self.slider_progressbar_frame, from_=-30, to=30, number_of_steps=60)
         self.slider_1.grid(row=4, column=0, padx=(20, 10), pady=(15, 15), sticky="ew")
+        self.bind("<Left>", self.decrement_slider1) #Configuração para teclas de seta
+        self.bind("<Right>", self.increment_slider1)
+        self.bind("<Up>", self.increment_slider2)
+        self.bind("<Down>", self.decrement_slider2)
         self.slider_2 = customtkinter.CTkSlider(self.slider_progressbar_frame, from_=0, to=1, number_of_steps=100, orientation="vertical",height=400)
         self.slider_2.grid(row=0, column=1, rowspan=5, padx=(10, 15), pady=(20, 10))
         self.slider_2.set(0) #Zero o slider de máquinas
@@ -573,23 +623,55 @@ class App(customtkinter.CTk):
         
         #Menu para escolha
         self.combobox = customtkinter.CTkOptionMenu(master=self.slider_progressbar_frame,
-                                       values=["Manual", "Teclado", "Joystick"],
+                                       values=["Manual", "Joystick"],
                                        command=self.optionmenu_callback)
         self.combobox.grid(row=10, column=0, rowspan=1,columnspan=2, padx=(5,10), pady=(0,205), sticky="")
 
 
+    def decrement_slider1(self, event):
+        current_value = self.slider_1.get()
+        new_value = current_value - 1
+        self.slider_1.set(new_value)
+        self.update_value_leme(new_value)
+
+    def increment_slider1(self, event):
+        current_value = self.slider_1.get()
+        new_value = current_value + 1
+        self.slider_1.set(new_value)
+        self.update_value_leme(new_value)
+
+    def decrement_slider2(self, event):
+        current_value = self.slider_2.get()
+        new_value = current_value - 0.01
+        self.slider_2.set(new_value)
+        self.update_value_maquinas(new_value)
+
+    def increment_slider2(self, event):
+        current_value = self.slider_2.get()
+        new_value = current_value + 0.01
+        self.slider_2.set(new_value)
+        self.update_value_maquinas(new_value)
+        
     def optionmenu_callback(self,choice):
         print("optionmenu dropdown clicked:", choice)
 
     def update_value_maquinas(self,other):
-        print(other)
+        #print(other)
         self.progressbar_3.set(self.slider_2.get())
         self.label_machine.configure(text=str(int(self.slider_2.get()*100))+"%")
 
+        if self.controle_manual is True:
+            self.comms.notify('DESIRED_THRUST', int(self.slider_2.get()*100),pymoos.time())
+            print("DESIRED_THRUST: ", int(self.slider_2.get()))
+
     def update_value_leme(self,other):
-        print(other)
+        #print(other)
         self.progressbar_2.set(self.slider_1.get())
         self.label_leme.configure(text=str(int(self.slider_1.get()))+"°")
+
+        if self.controle_manual is True:
+            self.comms.notify('DESIRED_RUDDER', int(self.slider_1.get()),pymoos.time())
+            print("DESIRED_RUDDER: ", int(self.slider_1.get()))
         
 
     def destroy_maps(self):
