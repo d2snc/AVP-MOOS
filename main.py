@@ -8,6 +8,8 @@ import socket
 import numpy as np
 import socket
 import io
+import re
+import pyproj
 from auvlib.data_tools import jsf_data, utils
 from tkintermapview import TkinterMapView
 from PIL import Image, ImageTk
@@ -52,6 +54,16 @@ class App(customtkinter.CTk):
         self.bind("<Command-w>", self.on_closing)
         self.createcommand('tk::mac::Quit', self.on_closing)
 
+        #Variáveis para a conversão de coordenadas no controle autônomo
+        LatOrigin = -22.93335 
+        LongOrigin = -43.136666665 
+        self.projection_local = pyproj.Proj(proj='aeqd', ellps='WGS84',
+                              datum='WGS84', lat_0=LatOrigin, lon_0=LongOrigin)
+        self.projection_global = pyproj.Proj(proj='latlong', ellps='WGS84', datum='WGS84')
+
+        #Auxiliar para plotagem dos pontos da derrota autonoma
+        self.marker_autonomous_list = []
+
         #Socket para conectar ao sonar
         self.sonar_ip = "127.0.0.1"
         self.sonar_port = 3000
@@ -85,6 +97,7 @@ class App(customtkinter.CTk):
         self.last_ais_msg = None
         self.controle_manual = False
         self.contador_ativacao_controle = 0
+        self.view_seglist = None
 
         #Carrego imagens para os ícones
         self.current_path = os.path.join(os.path.dirname(os.path.abspath(__file__)))
@@ -105,10 +118,14 @@ class App(customtkinter.CTk):
         self.frame_right.grid(row=0, column=1, rowspan=1, pady=0, padx=0, sticky="nsew")
 
         # ============ frame_left ============
-        self.frame_left.grid_rowconfigure(6, weight=1) #Para deixar igualmente espaçados
-        self.frame_left.grid_rowconfigure(7, weight=1)
-        self.frame_left.grid_rowconfigure(8, weight=1)
+        self.frame_left.grid_rowconfigure(8, weight=1) #Para deixar igualmente espaçados
         self.frame_left.grid_rowconfigure(9, weight=1)
+        self.frame_left.grid_rowconfigure(10, weight=1)
+        self.frame_left.grid_rowconfigure(11, weight=1)
+        self.frame_left.grid_rowconfigure(12, weight=1)
+        self.frame_left.grid_rowconfigure(13, weight=1)
+        self.frame_left.grid_rowconfigure(14, weight=1)
+        self.frame_left.grid_rowconfigure(15, weight=1)
 
         self.button_1 = customtkinter.CTkButton(master=self.frame_left,
                                                 text="Colocar Marcador",
@@ -135,53 +152,58 @@ class App(customtkinter.CTk):
                                                 command=self.activate_control)
         self.button_5.grid(pady=(20, 0), padx=(20, 20), row=4, column=0)
 
+        self.button_controle_autonomo = customtkinter.CTkButton(master=self.frame_left,
+                                                text="Controle Autônomo",
+                                                command=self.update_autonomous)
+        self.button_controle_autonomo.grid(pady=(20, 0), padx=(20, 20), row=5, column=0)
+
         self.sss_button = customtkinter.CTkButton(master=self.frame_left,
                                                 text="SSS",
                                                 command=self.activate_sss)
-        self.sss_button.grid(pady=(20, 0), padx=(20, 20), row=5, column=0)
+        self.sss_button.grid(pady=(20, 0), padx=(20, 20), row=6, column=0)
 
         self.plot_sonar_button = customtkinter.CTkButton(master=self.frame_left,
                                                 text="Sonar Plot",
                                                 command=self.receive_sonar)
-        self.plot_sonar_button.grid(pady=(20, 0), padx=(20, 20), row=6, column=0)
+        self.plot_sonar_button.grid(pady=(20, 0), padx=(20, 20), row=7, column=0)
 
         #Texto da Latitude
 
         self.label_lat = customtkinter.CTkLabel(master=self.frame_left, text="Latitude: "+str(self.nav_lat))
         self.label_lat.configure(font=("Segoe UI", 15))
-        self.label_lat.grid(row=7, column=0,  padx=(20,20), pady=(50,0), sticky="")
+        self.label_lat.grid(row=8, column=0,  padx=(20,20), pady=(50,0), sticky="")
 
         #Texto da Longitude
 
         self.label_long = customtkinter.CTkLabel(master=self.frame_left, text="Longitude: "+str(self.nav_long))
         self.label_long.configure(font=("Segoe UI", 15))
-        self.label_long.grid(row=7, column=0,  padx=(20,20), pady=(0,20), sticky="")
+        self.label_long.grid(row=9, column=0,  padx=(20,20), pady=(0,20), sticky="")
 
         #Texto do rumo
 
         self.label_heading = customtkinter.CTkLabel(master=self.frame_left, text="Rumo: "+str(self.nav_heading))
         self.label_heading.configure(font=("Segoe UI", 25))
-        self.label_heading.grid(row=8, column=0,  padx=(20,20), pady=(20,20), sticky="")
+        self.label_heading.grid(row=10, column=0,  padx=(20,20), pady=(20,20), sticky="")
 
         #Texto da veloc
 
         self.label_speed = customtkinter.CTkLabel(master=self.frame_left, text="Velocidade: "+str(self.nav_speed)+" nós",)
         self.label_speed.configure(font=("Segoe UI", 25))
-        self.label_speed.grid(row=9, column=0,  padx=(20,20), pady=(20,20), sticky="")
+        self.label_speed.grid(row=11, column=0,  padx=(20,20), pady=(20,20), sticky="")
 
         
 
         self.map_label = customtkinter.CTkLabel(self.frame_left, text="Servidor de Mapas:", anchor="w")
-        self.map_label.grid(row=10, column=0, padx=(20, 20), pady=(20, 0))
+        self.map_label.grid(row=12, column=0, padx=(20, 20), pady=(20, 0))
         self.map_option_menu = customtkinter.CTkOptionMenu(self.frame_left, values=["OpenStreetMap", "Google normal", "Google satellite"],
                                                                        command=self.change_map)
-        self.map_option_menu.grid(row=11, column=0, padx=(20, 20), pady=(10, 0))
+        self.map_option_menu.grid(row=13, column=0, padx=(20, 20), pady=(10, 0))
 
         self.appearance_mode_label = customtkinter.CTkLabel(self.frame_left, text="Aparência:", anchor="w")
-        self.appearance_mode_label.grid(row=12, column=0, padx=(20, 20), pady=(20, 0))
+        self.appearance_mode_label.grid(row=14, column=0, padx=(20, 20), pady=(20, 0))
         self.appearance_mode_optionemenu = customtkinter.CTkOptionMenu(self.frame_left, values=["Light", "Dark", "System"],
                                                                        command=self.change_appearance_mode)
-        self.appearance_mode_optionemenu.grid(row=13, column=0, padx=(20, 20), pady=(10, 20))
+        self.appearance_mode_optionemenu.grid(row=15, column=0, padx=(20, 20), pady=(10, 20))
 
         
 
@@ -225,7 +247,7 @@ class App(customtkinter.CTk):
         
         #Botão que liga/desliga AIS da praticagem
         self.checkbox = customtkinter.CTkCheckBox(master=self.frame_left, text="AIS Praticagem", command=self.update_lista_praticagem(),variable=self.check_var, onvalue="on", offvalue="off")
-        self.checkbox.grid(row=14, column=0, padx=(20, 20), pady=(10, 20))
+        self.checkbox.grid(row=16, column=0, padx=(20, 20), pady=(10, 20))
 
         ###Imagem da camera
         self.vid = cv2.VideoCapture('teste.mp4')
@@ -300,6 +322,10 @@ class App(customtkinter.CTk):
         self.comms.register('RETURN', 0)
         self.comms.register('DESIRED_RUDDER', 0)
         self.comms.register('DESIRED_THRUST', 0)
+
+        #Variáveis do MOOS para o controle autônomo
+        self.comms.register('VIEW_SEGLIST', 0) #rela de pontos
+
         
         return True
     
@@ -322,11 +348,49 @@ class App(customtkinter.CTk):
                 val = msg.string()
                 #print(val)
                 if val.startswith('!AIVDM'):
-                    #self.last_ais_msg = val
+                    self.last_ais_msg = val
                     print(val)
+            elif msg.name() == 'VIEW_SEGLIST':
+                val = msg.string()
+                self.view_seglist = val
+                print(val)
+
                 
             
         return True
+    
+    #Atualiza a derrota autônoma - Executar apenas quando ativar a opção de controle autônomo
+    def update_autonomous(self):
+        self.create_menu_autonomous()
+        if self.view_seglist is not None: #Checa se a lista não está vazia
+            # Extrair as coordenadas dos pontos usando expressões regulares
+            pattern = r'(-?\d+),(-?\d+)'
+            matches = re.findall(pattern, self.view_seglist)
+
+            # Converte os pontos para coordenadas de mapa e armazena
+            pontos = []
+            for match in matches:
+                #Conversão de coordenadas locais para globais
+                inv_longitude, inv_latitude = pyproj.transform(self.projection_local, self.projection_global, float(match[0]), float(match[1]))
+
+                #Adiciono os pontos na lista
+                pontos.append((inv_latitude, inv_longitude))
+
+            # Pontos para debug
+            print(pontos)
+
+            #Defino o caminho
+            self.path_1 = self.map_widget.set_path(pontos)
+
+            #Definindo pontos da derrota como markers
+            for ponto in pontos:
+                self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1]))
+
+            # Ploto a derrota no mapa
+            #path_1 = self.map_widget.set_path([self.marker_autonomous_list[0].position, self.marker_autonomous_list[1].position, (-43.15947614659043, -22.911947446774985), (-43.15947564792508, -22.908967568090326)])
+
+
+
     
     
     #Atualiza a lista de ctts AIS q vem da praticagem - Lembrar sempre de executar funções no final do programa
@@ -422,9 +486,10 @@ class App(customtkinter.CTk):
         self.after(100,self.receive_sonar) #A cada 0,1 segundo ele vai receber posição sonar
             
 
-    
-    
+
     #TODO Adicionar função que ao clicar em um contato AIS abra um pop-up mostrando informações do navio
+    #TODO Adicionar função no botão da AIS praticagem para remover todos os contatos da tela quando apertar no botão
+
     #Decodificar msgs AIS - Coloquei estático pq a função decode não usa self
     @staticmethod
     def decode_ais_msg(ais_msg):
@@ -508,6 +573,60 @@ class App(customtkinter.CTk):
     def marker_callback(self,marker): #O que acontece quando clica no marker
         print(marker.text)
 
+    #Destrói a GUI de controle autônomo
+    def destroy_autonomous(self):
+        #Deleto toda a derrota do mapa
+        self.map_widget.delete_all_path()
+        #Deleto os pontos do mapa
+        for marker in self.marker_autonomous_list:
+            marker.delete()
+        #Alterar a função do botão
+        self.button_controle_autonomo.configure(command=self.update_autonomous,text="Controle Autônomo")
+        self.slider_progressbar_frame1.destroy()
+        self.label_machine1.destroy()
+        
+
+        pass
+
+    #Função para ativar o controle autônomo
+    def create_menu_autonomous(self):
+        #Altero o texto do botão
+        self.button_controle_autonomo.configure(command=self.destroy_autonomous,text="Desativar Controle Autônomo")
+
+        #Crio o frame com o controle autônomo
+        # create slider and progressbar frame
+        self.slider_progressbar_frame1 = customtkinter.CTkFrame(self, fg_color="transparent",width=400,height=200)
+        self.slider_progressbar_frame1.grid(row=0, column=5, padx=(20, 0), pady=(90, 0), sticky="nsew") #Mexer no pady se quiser abaixar mais o frame
+        self.slider_progressbar_frame1.grid_columnconfigure(0, weight=1)
+        self.slider_progressbar_frame1.grid_rowconfigure(2, weight=1)
+        
+        #Label do Controle Autônomo
+        self.label_machine1 = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text="Controle Autônomo")
+        self.label_machine1.configure(font=("Segoe UI", 30))
+        self.label_machine1.grid(row=0, column=0, columnspan=2, padx=(50,50), pady=(10,25), sticky="")
+
+        #Botão para iniciar 
+        self.button_inicio_autonomo = customtkinter.CTkButton(master=self.slider_progressbar_frame1,
+                                                text="Iniciar",
+                                                command=self.activate_autonomous)
+        self.button_inicio_autonomo.grid(pady=(5, 5), padx=(5, 5), row=1, column=0)
+
+        self.button_parada_autonomo = customtkinter.CTkButton(master=self.slider_progressbar_frame1,
+                                                text="Parar",
+                                                command=self.stop_autonomous)
+        self.button_parada_autonomo.grid(pady=(5, 5), padx=(5, 35), row=1, column=1)
+
+
+    #Função para ativar o início da derrota autônoma no MOOS-IvP
+    def activate_autonomous(self): 
+        pass
+
+    #Função para parar o controle autônomo no MOOS-IvP
+    def stop_autonomous(self):
+        pass
+
+        
+        
 
     def destroy_control(self): #Destrói o frame com o controle
         self.button_5.configure(command=self.activate_control,text="Controle Remoto")
@@ -532,7 +651,6 @@ class App(customtkinter.CTk):
         
 
     def activate_control(self): #Cria o frame com o controle
-        
         #Envia a configuração para o MOOS-Ivp para o controle manual começar
         if self.controle_manual is False:
             if self.contador_ativacao_controle == 0: #na primeira ativação
