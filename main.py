@@ -92,6 +92,7 @@ class App(customtkinter.CTk):
         self.camera_on = False
         self.nav_lat = 0
         self.nav_long = 0
+        self.nav_yaw = 0 #leme do navio
         self.nav_heading = 0
         self.nav_speed = 0
         self.last_ais_msg = None
@@ -126,6 +127,7 @@ class App(customtkinter.CTk):
         self.frame_left.grid_rowconfigure(13, weight=1)
         self.frame_left.grid_rowconfigure(14, weight=1)
         self.frame_left.grid_rowconfigure(15, weight=1)
+        self.frame_left.grid_rowconfigure(16, weight=1)
 
         self.button_1 = customtkinter.CTkButton(master=self.frame_left,
                                                 text="Colocar Marcador",
@@ -191,19 +193,25 @@ class App(customtkinter.CTk):
         self.label_speed.configure(font=("Segoe UI", 25))
         self.label_speed.grid(row=11, column=0,  padx=(20,20), pady=(20,20), sticky="")
 
+        #Texto do angulo do leme
+
+        self.label_yaw = customtkinter.CTkLabel(master=self.frame_left, text="Ângulo Leme: "+str(self.nav_yaw))
+        self.label_yaw.configure(font=("Segoe UI", 20))
+        self.label_yaw.grid(row=12, column=0,  padx=(20,20), pady=(20,20), sticky="")
+
         
 
         self.map_label = customtkinter.CTkLabel(self.frame_left, text="Servidor de Mapas:", anchor="w")
-        self.map_label.grid(row=12, column=0, padx=(20, 20), pady=(20, 0))
+        self.map_label.grid(row=13, column=0, padx=(20, 20), pady=(20, 0))
         self.map_option_menu = customtkinter.CTkOptionMenu(self.frame_left, values=["OpenStreetMap", "Google normal", "Google satellite"],
                                                                        command=self.change_map)
-        self.map_option_menu.grid(row=13, column=0, padx=(20, 20), pady=(10, 0))
+        self.map_option_menu.grid(row=14, column=0, padx=(20, 20), pady=(10, 0))
 
         self.appearance_mode_label = customtkinter.CTkLabel(self.frame_left, text="Aparência:", anchor="w")
-        self.appearance_mode_label.grid(row=14, column=0, padx=(20, 20), pady=(20, 0))
+        self.appearance_mode_label.grid(row=15, column=0, padx=(20, 20), pady=(20, 0))
         self.appearance_mode_optionemenu = customtkinter.CTkOptionMenu(self.frame_left, values=["Light", "Dark", "System"],
                                                                        command=self.change_appearance_mode)
-        self.appearance_mode_optionemenu.grid(row=15, column=0, padx=(20, 20), pady=(10, 20))
+        self.appearance_mode_optionemenu.grid(row=16, column=0, padx=(20, 20), pady=(10, 20))
 
         
 
@@ -247,7 +255,7 @@ class App(customtkinter.CTk):
         
         #Botão que liga/desliga AIS da praticagem
         self.checkbox = customtkinter.CTkCheckBox(master=self.frame_left, text="AIS Praticagem", command=self.update_lista_praticagem(),variable=self.check_var, onvalue="on", offvalue="off")
-        self.checkbox.grid(row=16, column=0, padx=(20, 20), pady=(10, 20))
+        self.checkbox.grid(row=17, column=0, padx=(20, 20), pady=(10, 20))
 
         ###Imagem da camera
         self.vid = cv2.VideoCapture('teste.mp4')
@@ -313,6 +321,7 @@ class App(customtkinter.CTk):
         self.comms.register('NAV_LONG', 0)
         self.comms.register('NAV_HEADING', 0)
         self.comms.register('NAV_SPEED', 0)
+        self.comms.register('NAV_YAW', 0)
         #self.comms.register('LAST_AIS_MSG', 0)
         self.comms.register('MSG_UDP', 0)
 
@@ -349,10 +358,13 @@ class App(customtkinter.CTk):
                 #print(val)
                 if val.startswith('!AIVDM'):
                     self.last_ais_msg = val
-                    print(val)
+                    #print(val)
             elif msg.name() == 'VIEW_SEGLIST':
                 val = msg.string()
                 self.view_seglist = val
+                #print(val)
+            elif msg.name() == 'NAV_YAW':
+                self.nav_yaw = val
                 print(val)
 
                 
@@ -385,6 +397,8 @@ class App(customtkinter.CTk):
             #Definindo pontos da derrota como markers
             for ponto in pontos:
                 self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1]))
+
+            
 
             # Ploto a derrota no mapa
             #path_1 = self.map_widget.set_path([self.marker_autonomous_list[0].position, self.marker_autonomous_list[1].position, (-43.15947614659043, -22.911947446774985), (-43.15947564792508, -22.908967568090326)])
@@ -547,6 +561,7 @@ class App(customtkinter.CTk):
         self.label_long.configure(text=f"Longitude: {degrees}° {minutes}' {seconds:.2f}\"")
         self.label_heading.configure(text="Rumo: "+str(int(self.nav_heading))+" °")
         self.label_speed.configure(text="Velocidade: "+str(int(self.nav_speed))+" nós")
+        self.label_yaw.configure(text="Ângulo Leme: "+str(self.nav_yaw))
         self.after(1000,self.update_gui)
 
 
@@ -731,8 +746,6 @@ class App(customtkinter.CTk):
         self.label_leme = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text=str(int(self.slider_1.get()))+"°")
         self.label_leme.configure(font=("Segoe UI", 25))
         self.label_leme.grid(row=6, column=0, columnspan=2,rowspan=1, padx=(5,10), pady=(0,10), sticky="s")
-
-        #Escolha de modo de controle remoto
         
         #Texto
         self.label_controle = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text="Modo de controle")
