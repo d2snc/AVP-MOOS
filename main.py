@@ -103,6 +103,7 @@ class App(customtkinter.CTk):
         self.controle_manual = False
         self.contador_ativacao_controle = 0
         self.view_seglist = None
+        self.view_point = None
 
         #Carrego imagens para os ícones
         self.current_path = os.path.join(os.path.dirname(os.path.abspath(__file__)))
@@ -343,6 +344,7 @@ class App(customtkinter.CTk):
 
         #Variáveis do MOOS para o controle autônomo
         self.comms.register('VIEW_SEGLIST', 0) #rela de pontos
+        self.comms.register('VIEW_POINT', 0) #Ponto autônomo ativo no momento
 
         
         return True
@@ -372,9 +374,12 @@ class App(customtkinter.CTk):
                 val = msg.string()
                 self.view_seglist = val
                 #print(val)
-            elif msg.name() == 'NAV_YAW':
+            elif msg.name() == 'NAV_YAW': #Leme do navio
                 self.nav_yaw = val
-                print(val)
+                #print(val)
+            elif msg.name() == 'VIEW_POINT': #Ponto autônomo ativo no momento
+                val = msg.string()
+                self.view_point = val
 
                 
             
@@ -683,7 +688,8 @@ class App(customtkinter.CTk):
         #Configuro o DEPLOY para true e assim ativar o controle autônomo
         self.comms.notify('DEPLOY', 'true',pymoos.time())
 
-        pass
+
+        
 
     #Função para parar o controle autônomo no MOOS-IvP
     def stop_autonomous(self):
