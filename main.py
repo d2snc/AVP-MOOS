@@ -104,6 +104,7 @@ class App(customtkinter.CTk):
         self.contador_ativacao_controle = 0
         self.view_seglist = None
         self.view_point = None
+        self.ponto_ativo_marker = None
 
         #Carrego imagens para os ícones
         self.current_path = os.path.join(os.path.dirname(os.path.abspath(__file__)))
@@ -385,6 +386,27 @@ class App(customtkinter.CTk):
             
         return True
     
+    #Atualiza o ponto ativo no momento
+    def update_active_autonomous_point(self):
+        data_point = self.view_point.split(",")
+        x = float(data_point[0][2:]) #Pego o valor de x do ponto ativo
+        y = float(data_point[1][2:])#Pego o valor de y do ponto ativo
+
+        #Converto x e y para lat e long
+        inv_longitude, inv_latitude = pyproj.transform(self.projection_local, self.projection_global, x, y)
+
+        #Ploto o marker do ponto ativo
+        ponto_ativo_image = ImageTk.PhotoImage(Image.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "images", "hit_marker.png")).resize((70, 70)))
+        print("Ponto ativo no controle autônomo: lat:"+str(inv_latitude)+" long:"+str(inv_longitude))
+        
+        if self.ponto_ativo_marker is None:
+            self.ponto_ativo_marker = self.map_widget.set_marker(inv_latitude, inv_longitude, icon=ponto_ativo_image)
+        else:
+            self.ponto_ativo_marker.set_position(inv_latitude,inv_longitude)
+        
+        self.after(1000,self.update_active_autonomous_point)
+
+    
     #Atualiza a derrota autônoma - Executar apenas quando ativar a opção de controle autônomo
     def update_autonomous(self):
         self.create_menu_autonomous()
@@ -416,7 +438,7 @@ class App(customtkinter.CTk):
                 self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1], text="#"+str(self.pontos_autonomos.index(ponto)+1)+" Ponto de derrota autônoma"))
 
             
-
+        
             # Ploto a derrota no mapa
             #path_1 = self.map_widget.set_path([self.marker_autonomous_list[0].position, self.marker_autonomous_list[1].position, (-43.15947614659043, -22.911947446774985), (-43.15947564792508, -22.908967568090326)])
 
@@ -687,6 +709,8 @@ class App(customtkinter.CTk):
         self.comms.notify('WPT_UPDATE', string_update,pymoos.time())
         #Configuro o DEPLOY para true e assim ativar o controle autônomo
         self.comms.notify('DEPLOY', 'true',pymoos.time())
+        #Executo a função para mostrar o waypoint ativo
+        self.update_active_autonomous_point()
 
 
         
