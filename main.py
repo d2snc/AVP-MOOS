@@ -61,6 +61,10 @@ class App(customtkinter.CTk):
                               datum='WGS84', lat_0=LatOrigin, lon_0=LongOrigin)
         self.projection_global = pyproj.Proj(proj='latlong', ellps='WGS84', datum='WGS84')
 
+        #Auxiliar na plotagem da derrota autônoma
+        self.pontos_autonomos = []
+
+
         #Auxiliar para plotagem dos pontos da derrota autonoma
         self.marker_autonomous_list = []
 
@@ -251,6 +255,11 @@ class App(customtkinter.CTk):
         self.map_widget.add_right_click_menu_command(label="Adicionar mina",
                                             command=self.add_mina,
                                             pass_coords=True)
+        
+        #Ponto de derrota autônoma
+        self.map_widget.add_right_click_menu_command(label="Adicionar ponto de derrota autônoma",
+                                            command=self.add_autonomous_point,
+                                            pass_coords=True)
 
         
         #Botão que liga/desliga AIS da praticagem
@@ -380,22 +389,22 @@ class App(customtkinter.CTk):
             matches = re.findall(pattern, self.view_seglist)
 
             # Converte os pontos para coordenadas de mapa e armazena
-            pontos = []
+            
             for match in matches:
                 #Conversão de coordenadas locais para globais
                 inv_longitude, inv_latitude = pyproj.transform(self.projection_local, self.projection_global, float(match[0]), float(match[1]))
 
                 #Adiciono os pontos na lista
-                pontos.append((inv_latitude, inv_longitude))
+                self.pontos_autonomos.append((inv_latitude, inv_longitude))
 
             # Pontos para debug
-            print(pontos)
+            print(self.pontos_autonomos)
 
             #Defino o caminho
-            self.path_1 = self.map_widget.set_path(pontos)
+            self.path_1 = self.map_widget.set_path(self.pontos_autonomos)
 
             #Definindo pontos da derrota como markers
-            for ponto in pontos:
+            for ponto in self.pontos_autonomos:
                 self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1]))
 
             
@@ -442,6 +451,22 @@ class App(customtkinter.CTk):
 
 
         self.after(1000,self.update_lista_praticagem) #Coloco essa função em loop para repetir a cada 1 seg dentro do programa
+
+    #Adiciona ponto de derrota autônoma no mapa
+
+    def add_autonomous_point(self,coords):
+        print("Adicionar ponto de derrota:", coords)
+        #Adiciona ponto na lista de pontos
+        self.pontos_autonomos.append(coords)
+        #Defino o caminho
+        if len(self.pontos_autonomos) > 1: #Para não criar o caminho c/ 1 ponto só
+            self.path_1 = self.map_widget.set_path(self.pontos_autonomos)
+
+        #Definindo pontos da derrota como markers
+        #Só adiciona pontos que não estão na lista
+        for ponto in self.pontos_autonomos:
+            if ponto not in self.marker_autonomous_list:
+                self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1], text="#"+str(self.pontos_autonomos.index(ponto)+1)+" Ponto de derrota autônoma"))
 
 
     #Adiciona mina no mapa
@@ -613,7 +638,7 @@ class App(customtkinter.CTk):
         self.slider_progressbar_frame1 = customtkinter.CTkFrame(self, fg_color="transparent",width=400,height=200)
         self.slider_progressbar_frame1.grid(row=0, column=5, padx=(20, 0), pady=(90, 0), sticky="nsew") #Mexer no pady se quiser abaixar mais o frame
         self.slider_progressbar_frame1.grid_columnconfigure(0, weight=1)
-        self.slider_progressbar_frame1.grid_rowconfigure(2, weight=1)
+        self.slider_progressbar_frame1.grid_rowconfigure(3, weight=1)
         
         #Label do Controle Autônomo
         self.label_machine1 = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text="Controle Autônomo")
@@ -631,16 +656,48 @@ class App(customtkinter.CTk):
                                                 command=self.stop_autonomous)
         self.button_parada_autonomo.grid(pady=(5, 5), padx=(5, 35), row=1, column=1)
 
+        self.button_parada_autonomo = customtkinter.CTkButton(master=self.slider_progressbar_frame1,
+                                                text="Limpar Derrota",
+                                                command=self.clean_autonomous)
+        self.button_parada_autonomo.grid(pady=(15, 5), padx=(35, 35), row=2, column=0)
+
 
     #Função para ativar o início da derrota autônoma no MOOS-IvP
     def activate_autonomous(self): 
+        string_update = []
+        #Crio a lista com todos os pontos da derrota autônoma
+        for ponto in self.pontos_autonomos:
+            #Converto para coordenadas locais antes de enviar
+            x, y = pyproj.transform(self.projection_global, self.projection_local, ponto[1], ponto[0])
+            string_update.append(str(x)+","+str(y)+":")
+        #Junto os pontos
+        string_update = ''.join(string_update)
+        string_update = string_update[:-1] #Removo o último ":" da string
+        string_update = 'polygon='+string_update #colocar entre aspas para o MOOS-IvP entender
+        
+        #Atualizo a derrota no MOOS
+        self.comms.notify('WPT_UPDATE', string_update,pymoos.time())
+        #Configuro o DEPLOY para true e assim ativar o controle autônomo
+        self.comms.notify('DEPLOY', 'true',pymoos.time())
+
         pass
 
     #Função para parar o controle autônomo no MOOS-IvP
     def stop_autonomous(self):
         pass
 
-        
+    #Função para limpar a derrota autônoma no MOOS-IvP
+    def clean_autonomous(self):
+        #Deleto os caminhos criados
+        self.map_widget.delete_all_path()
+
+        #Removo pontos da lista self.marker_autonomous_list
+        for marker in self.marker_autonomous_list:
+            marker.delete()
+
+        #Limpo a lista self.pontos_autonomos
+        self.pontos_autonomos = []
+
         
 
     def destroy_control(self): #Destrói o frame com o controle
