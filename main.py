@@ -384,13 +384,16 @@ class App(customtkinter.CTk):
     def update_autonomous(self):
         self.create_menu_autonomous()
         if self.view_seglist is not None: #Checa se a lista não está vazia
-            # Extrair as coordenadas dos pontos usando expressões regulares
-            pattern = r'(-?\d+),(-?\d+)'
-            matches = re.findall(pattern, self.view_seglist)
+            #Extrair coordenadas da self.view_seglist
+            start_index = self.view_seglist.find("pts={") + len("pts={")
+            end_index = self.view_seglist.find("}")
+            pts_string = self.view_seglist[start_index:end_index]
+            points = pts_string.split(":")
 
             # Converte os pontos para coordenadas de mapa e armazena
             
-            for match in matches:
+            for match in points:
+                match = match.split(",")
                 #Conversão de coordenadas locais para globais
                 inv_longitude, inv_latitude = pyproj.transform(self.projection_local, self.projection_global, float(match[0]), float(match[1]))
 
@@ -405,7 +408,7 @@ class App(customtkinter.CTk):
 
             #Definindo pontos da derrota como markers
             for ponto in self.pontos_autonomos:
-                self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1]))
+                self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1], text="#"+str(self.pontos_autonomos.index(ponto)+1)+" Ponto de derrota autônoma"))
 
             
 
@@ -684,7 +687,9 @@ class App(customtkinter.CTk):
 
     #Função para parar o controle autônomo no MOOS-IvP
     def stop_autonomous(self):
-        pass
+        #Desativa o pHelmIvP no MOOS
+        self.comms.notify('DEPLOY', 'false',pymoos.time())
+        
 
     #Função para limpar a derrota autônoma no MOOS-IvP
     def clean_autonomous(self):
