@@ -29,7 +29,7 @@ port = 8000
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 # Connect to the server
-sock.connect((ip_address, port))
+#sock.connect((ip_address, port))
 
 
 customtkinter.set_default_color_theme("blue")
@@ -105,6 +105,7 @@ class App(customtkinter.CTk):
         self.view_seglist = None
         self.view_point = None
         self.ponto_ativo_marker = None
+        self.deploy = None
 
         #Carrego imagens para os ícones
         self.current_path = os.path.join(os.path.dirname(os.path.abspath(__file__)))
@@ -381,7 +382,10 @@ class App(customtkinter.CTk):
             elif msg.name() == 'VIEW_POINT': #Ponto autônomo ativo no momento
                 val = msg.string()
                 self.view_point = val
-
+            elif msg.name() == 'DEPLOY':
+                val = msg.string()
+                self.deploy = val
+                #print("Deploy: "+val)
                 
             
         return True
@@ -654,6 +658,7 @@ class App(customtkinter.CTk):
         self.button_controle_autonomo.configure(command=self.update_autonomous,text="Controle Autônomo")
         self.slider_progressbar_frame1.destroy()
         self.label_machine1.destroy()
+        self.ponto_ativo_marker.destroy()
         
 
         pass
@@ -704,11 +709,15 @@ class App(customtkinter.CTk):
         string_update = ''.join(string_update)
         string_update = string_update[:-1] #Removo o último ":" da string
         string_update = 'polygon='+string_update #colocar entre aspas para o MOOS-IvP entender
+
+        #Caso o deploy seja false, passo para true
+        if self.deploy == 'false':
+            self.comms.notify('DEPLOY', 'true',pymoos.time())
         
         #Atualizo a derrota no MOOS
         self.comms.notify('WPT_UPDATE', string_update,pymoos.time())
-        #Configuro o DEPLOY para true e assim ativar o controle autônomo
-        self.comms.notify('DEPLOY', 'true',pymoos.time())
+        #Configuro a endflag END para false e assim retomar o controle autonomo
+        self.comms.notify('END', 'false',pymoos.time())
         #Executo a função para mostrar o waypoint ativo
         self.update_active_autonomous_point()
 
@@ -718,7 +727,7 @@ class App(customtkinter.CTk):
     #Função para parar o controle autônomo no MOOS-IvP
     def stop_autonomous(self):
         #Desativa o pHelmIvP no MOOS
-        self.comms.notify('DEPLOY', 'false',pymoos.time())
+        self.comms.notify('END', 'true',pymoos.time())
         
 
     #Função para limpar a derrota autônoma no MOOS-IvP
@@ -752,34 +761,25 @@ class App(customtkinter.CTk):
         self.controle_manual = False
 
         #Desativa o pHelmIvP no MOOS
-        self.comms.notify('DEPLOY', 'false',pymoos.time())
+        self.comms.notify('END', 'true',pymoos.time())
 
 
         
 
     def activate_control(self): #Cria o frame com o controle
         #Envia a configuração para o MOOS-Ivp para o controle manual começar
-        if self.controle_manual is False:
-            if self.contador_ativacao_controle == 0: #na primeira ativação
-                ## Comandos para iniciar o pHelmIvP
-                #Só executa quando lança a função pela primeira vez
-                #Notifico o deploy=true
-                self.comms.notify('DEPLOY', 'true',pymoos.time()) 
-                #Notifico o manual override = false
-                self.comms.notify('MOOS_MANUAL_OVERIDE', 'false',pymoos.time())
-                #Notifico o return = false
-                self.comms.notify('RETURN', 'false',pymoos.time())
-
-                #Após iniciar manda o comando para o controle manual
-                time.sleep(0.5)
-                self.comms.notify('MOOS_MANUAL_OVERIDE', 'true',pymoos.time())
-                #Seto a variável auxiliar para True
-                self.controle_manual = True
-                self.contador_ativacao_controle +=1
-            else:
-                #Apenas notifico o manual override = true
-                self.comms.notify('MOOS_MANUAL_OVERIDE', 'true',pymoos.time())
-                self.controle_manual = True
+        
+        ## Comandos para iniciar o pHelmIvP
+        #Só executa quando lança a função pela primeira vez
+        #Notifico o deploy=true
+        if self.deploy == 'false':
+            self.comms.notify('DEPLOY', 'true',pymoos.time()) 
+        
+        #Passo o comando para manual
+        self.comms.notify('MOOS_MANUAL_OVERIDE', 'true',pymoos.time())
+        #Seto a variável auxiliar para True
+        self.controle_manual = True
+            
 
 
         self.button_5.configure(command=self.destroy_control,text="Desativar Controle Remoto")
