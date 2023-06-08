@@ -55,11 +55,18 @@ class App(customtkinter.CTk):
         self.createcommand('tk::mac::Quit', self.on_closing)
 
         #Variáveis para a conversão de coordenadas no controle autônomo
+        #Dados para o RJ
         LatOrigin = -22.93335 
         LongOrigin = -43.136666665 
+        #Dados para o lago do MIT
+        #LatOrigin  = 43.825300 
+        #LongOrigin = -70.330400 
         self.projection_local = pyproj.Proj(proj='aeqd', ellps='WGS84',
                               datum='WGS84', lat_0=LatOrigin, lon_0=LongOrigin)
         self.projection_global = pyproj.Proj(proj='latlong', ellps='WGS84', datum='WGS84')
+        self.diff_x = 25.1
+        self.diff_y = 38.6
+        
 
         #Auxiliar na plotagem da derrota autônoma
         self.pontos_autonomos = []
@@ -202,7 +209,7 @@ class App(customtkinter.CTk):
 
         #Texto do angulo do leme
 
-        self.label_yaw = customtkinter.CTkLabel(master=self.frame_left, text="Ângulo Leme: "+str(self.nav_yaw))
+        self.label_yaw = customtkinter.CTkLabel(master=self.frame_left, text="Ângulo do Leme: "+str(round(self.nav_yaw,2)))
         self.label_yaw.configure(font=("Segoe UI", 20))
         self.label_yaw.grid(row=12, column=0,  padx=(20,20), pady=(20,20), sticky="")
 
@@ -233,7 +240,10 @@ class App(customtkinter.CTk):
         #Criação do mapa inicial
         self.script_directory = os.path.dirname(os.path.abspath(__file__))
         self.database_path = os.path.join(self.script_directory, "offline_tiles_rio.db")
+        #Mapas offline
         self.map_widget = TkinterMapView(self.frame_right, corner_radius=0,use_database_only=True,database_path=self.database_path)
+        #Mapas online
+        #self.map_widget = TkinterMapView(self.frame_right, corner_radius=0)
         self.map_widget.grid(row=1, rowspan=1, column=0, columnspan=3, sticky="nswe", padx=(0, 0), pady=(0, 0))
         self.map_widget.set_overlay_tile_server("http://tiles.openseamap.org/seamark//{z}/{x}/{y}.png")
 
@@ -359,9 +369,10 @@ class App(customtkinter.CTk):
 
             if msg.name() == 'NAV_LAT':
                 self.nav_lat = val
-                #print(self.nav_lat)
+                print("Latitude: "+str(round(self.nav_lat,8)))
             elif msg.name() == 'NAV_LONG':
                 self.nav_long = val
+                print("Longitude: "+str(round(self.nav_long,8)))
             elif msg.name() == 'NAV_HEADING':
                 self.nav_heading = val
             elif msg.name() == 'NAV_SPEED':
@@ -390,6 +401,8 @@ class App(customtkinter.CTk):
             
         return True
     
+    #### Funções do controle autônomo ###
+    
     #Atualiza o ponto ativo no momento
     def update_active_autonomous_point(self):
         data_point = self.view_point.split(",")
@@ -397,11 +410,11 @@ class App(customtkinter.CTk):
         y = float(data_point[1][2:])#Pego o valor de y do ponto ativo
 
         #Converto x e y para lat e long
-        inv_longitude, inv_latitude = pyproj.transform(self.projection_local, self.projection_global, x, y)
+        inv_longitude, inv_latitude = pyproj.transform(self.projection_local, self.projection_global, x-self.diff_x, y-self.diff_y)
 
         #Ploto o marker do ponto ativo
         ponto_ativo_image = ImageTk.PhotoImage(Image.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "images", "hit_marker.png")).resize((70, 70)))
-        print("Ponto ativo no controle autônomo: lat:"+str(inv_latitude)+" long:"+str(inv_longitude))
+        #print("Ponto ativo no controle autônomo: lat:"+str(inv_latitude)+" long:"+str(inv_longitude))
         
         if self.ponto_ativo_marker is None:
             self.ponto_ativo_marker = self.map_widget.set_marker(inv_latitude, inv_longitude, icon=ponto_ativo_image)
@@ -426,7 +439,7 @@ class App(customtkinter.CTk):
             for match in points:
                 match = match.split(",")
                 #Conversão de coordenadas locais para globais
-                inv_longitude, inv_latitude = pyproj.transform(self.projection_local, self.projection_global, float(match[0]), float(match[1]))
+                inv_longitude, inv_latitude = pyproj.transform(self.projection_local, self.projection_global, float(match[0])-self.diff_x, float(match[1])-self.diff_y)
 
                 #Adiciono os pontos na lista
                 self.pontos_autonomos.append((inv_latitude, inv_longitude))
@@ -446,9 +459,115 @@ class App(customtkinter.CTk):
             # Ploto a derrota no mapa
             #path_1 = self.map_widget.set_path([self.marker_autonomous_list[0].position, self.marker_autonomous_list[1].position, (-43.15947614659043, -22.911947446774985), (-43.15947564792508, -22.908967568090326)])
 
+     #Adiciona ponto de derrota autônoma no mapa
+
+    def add_autonomous_point(self,coords):
+        print("Adicionar ponto de derrota:", coords)
+        #Adiciona ponto na lista de pontos
+        self.pontos_autonomos.append(coords)
+        #Defino o caminho
+        if len(self.pontos_autonomos) > 1: #Para não criar o caminho c/ 1 ponto só
+            self.path_1 = self.map_widget.set_path(self.pontos_autonomos)
+
+        #Definindo pontos da derrota como markers
+        #Só adiciona pontos que não estão na lista
+        for ponto in self.pontos_autonomos:
+            if ponto not in self.marker_autonomous_list:
+                self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1], text="#"+str(self.pontos_autonomos.index(ponto)+1)+" Ponto de derrota autônoma"))
+
+    #Destrói a GUI de controle autônomo
+    def destroy_autonomous(self):
+        #Deleto toda a derrota do mapa
+        self.map_widget.delete_all_path()
+        #Deleto os pontos do mapa
+        for marker in self.marker_autonomous_list:
+            marker.delete()
+        #Alterar a função do botão
+        self.button_controle_autonomo.configure(command=self.update_autonomous,text="Controle Autônomo")
+        self.slider_progressbar_frame1.destroy()
+        self.label_machine1.destroy()
+        self.ponto_ativo_marker.destroy()
+        
+
+        pass
+
+    #Função para ativar o controle autônomo
+    def create_menu_autonomous(self):
+        #Altero o texto do botão
+        self.button_controle_autonomo.configure(command=self.destroy_autonomous,text="Desativar Controle Autônomo")
+
+        #Crio o frame com o controle autônomo
+        # create slider and progressbar frame
+        self.slider_progressbar_frame1 = customtkinter.CTkFrame(self, fg_color="transparent",width=400,height=200)
+        self.slider_progressbar_frame1.grid(row=0, column=5, padx=(20, 0), pady=(90, 0), sticky="nsew") #Mexer no pady se quiser abaixar mais o frame
+        self.slider_progressbar_frame1.grid_columnconfigure(0, weight=1)
+        self.slider_progressbar_frame1.grid_rowconfigure(3, weight=1)
+        
+        #Label do Controle Autônomo
+        self.label_machine1 = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text="Controle Autônomo")
+        self.label_machine1.configure(font=("Segoe UI", 30))
+        self.label_machine1.grid(row=0, column=0, columnspan=2, padx=(50,50), pady=(10,25), sticky="")
+
+        #Botão para iniciar 
+        self.button_inicio_autonomo = customtkinter.CTkButton(master=self.slider_progressbar_frame1,
+                                                text="Iniciar",
+                                                command=self.activate_autonomous)
+        self.button_inicio_autonomo.grid(pady=(5, 5), padx=(5, 5), row=1, column=0)
+
+        self.button_parada_autonomo = customtkinter.CTkButton(master=self.slider_progressbar_frame1,
+                                                text="Parar",
+                                                command=self.stop_autonomous)
+        self.button_parada_autonomo.grid(pady=(5, 5), padx=(5, 35), row=1, column=1)
+
+        self.button_parada_autonomo = customtkinter.CTkButton(master=self.slider_progressbar_frame1,
+                                                text="Limpar Derrota",
+                                                command=self.clean_autonomous)
+        self.button_parada_autonomo.grid(pady=(15, 5), padx=(35, 35), row=2, column=0)
 
 
-    
+    #Função para ativar o início da derrota autônoma no MOOS-IvP
+    def activate_autonomous(self): 
+        string_update = []
+        #Crio a lista com todos os pontos da derrota autônoma
+        for ponto in self.pontos_autonomos:
+            #Converto para coordenadas locais antes de enviar
+            x, y = pyproj.transform(self.projection_global, self.projection_local, ponto[1], ponto[0])
+            string_update.append(str(round(x,2)+self.diff_x)+","+str(round(y,2)+self.diff_y)+":")
+        #Junto os pontos
+        string_update = ''.join(string_update)
+        string_update = string_update[:-1] #Removo o último ":" da string
+        string_update = 'polygon='+string_update #colocar entre aspas para o MOOS-IvP entender
+
+        #Caso o deploy seja false, passo para true
+        if self.deploy == 'false':
+            self.comms.notify('DEPLOY', 'true',pymoos.time())
+        
+        #Atualizo a derrota no MOOS
+        self.comms.notify('WPT_UPDATE', string_update,pymoos.time())
+        #Configuro a endflag END para false e assim retomar o controle autonomo
+        self.comms.notify('END', 'false',pymoos.time())
+        #Executo a função para mostrar o waypoint ativo
+        self.update_active_autonomous_point()
+
+    #Função para parar o controle autônomo no MOOS-IvP
+    def stop_autonomous(self):
+        #Desativa o pHelmIvP no MOOS
+        self.comms.notify('END', 'true',pymoos.time())
+        
+
+    #Função para limpar a derrota autônoma no MOOS-IvP
+    def clean_autonomous(self):
+        #Deleto os caminhos criados
+        self.map_widget.delete_all_path()
+
+        #Removo pontos da lista self.marker_autonomous_list
+        for marker in self.marker_autonomous_list:
+            marker.delete()
+
+        #Limpo a lista self.pontos_autonomos
+        self.pontos_autonomos = []
+
+    ### Fim de funções para o controle autônomo ###
     
     #Atualiza a lista de ctts AIS q vem da praticagem - Lembrar sempre de executar funções no final do programa
     
@@ -485,22 +604,6 @@ class App(customtkinter.CTk):
 
 
         self.after(1000,self.update_lista_praticagem) #Coloco essa função em loop para repetir a cada 1 seg dentro do programa
-
-    #Adiciona ponto de derrota autônoma no mapa
-
-    def add_autonomous_point(self,coords):
-        print("Adicionar ponto de derrota:", coords)
-        #Adiciona ponto na lista de pontos
-        self.pontos_autonomos.append(coords)
-        #Defino o caminho
-        if len(self.pontos_autonomos) > 1: #Para não criar o caminho c/ 1 ponto só
-            self.path_1 = self.map_widget.set_path(self.pontos_autonomos)
-
-        #Definindo pontos da derrota como markers
-        #Só adiciona pontos que não estão na lista
-        for ponto in self.pontos_autonomos:
-            if ponto not in self.marker_autonomous_list:
-                self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1], text="#"+str(self.pontos_autonomos.index(ponto)+1)+" Ponto de derrota autônoma"))
 
 
     #Adiciona mina no mapa
@@ -620,14 +723,15 @@ class App(customtkinter.CTk):
         self.label_long.configure(text=f"Longitude: {degrees}° {minutes}' {seconds:.2f}\"")
         self.label_heading.configure(text="Rumo: "+str(int(self.nav_heading))+" °")
         self.label_speed.configure(text="Velocidade: "+str(int(self.nav_speed))+" nós")
-        self.label_yaw.configure(text="Ângulo Leme: "+str(self.nav_yaw))
+        self.label_yaw.configure(text="Ângulo Leme: "+str(round(self.nav_yaw,2)))
         self.after(1000,self.update_gui)
 
 
     #Função em loop utilizada para atualizar a posição do meu navio
     def update_ship_position(self):
         if (self.map_widget.winfo_exists() == 1): #Checa se existe o mapa
-            self.marker_1.set_position(self.nav_lat,self.nav_long)
+            # correção da posição para o mapa
+            self.marker_1.set_position(self.nav_lat-0.0001,self.nav_long-0.0001) #Ajustar os valores para ter uma melhor posição do navio
             #self.map_widget.set_position(self.nav_lat,self.nav_long) #Centraliza o mapa no navio, colocar uma opção para ativar ela 
             #self.map_widget.set_zoom(15)
             self.label_widget.configure(text=str(self.nav_lat)+" "+str(self.nav_long))
@@ -646,101 +750,6 @@ class App(customtkinter.CTk):
 
     def marker_callback(self,marker): #O que acontece quando clica no marker
         print(marker.text)
-
-    #Destrói a GUI de controle autônomo
-    def destroy_autonomous(self):
-        #Deleto toda a derrota do mapa
-        self.map_widget.delete_all_path()
-        #Deleto os pontos do mapa
-        for marker in self.marker_autonomous_list:
-            marker.delete()
-        #Alterar a função do botão
-        self.button_controle_autonomo.configure(command=self.update_autonomous,text="Controle Autônomo")
-        self.slider_progressbar_frame1.destroy()
-        self.label_machine1.destroy()
-        self.ponto_ativo_marker.destroy()
-        
-
-        pass
-
-    #Função para ativar o controle autônomo
-    def create_menu_autonomous(self):
-        #Altero o texto do botão
-        self.button_controle_autonomo.configure(command=self.destroy_autonomous,text="Desativar Controle Autônomo")
-
-        #Crio o frame com o controle autônomo
-        # create slider and progressbar frame
-        self.slider_progressbar_frame1 = customtkinter.CTkFrame(self, fg_color="transparent",width=400,height=200)
-        self.slider_progressbar_frame1.grid(row=0, column=5, padx=(20, 0), pady=(90, 0), sticky="nsew") #Mexer no pady se quiser abaixar mais o frame
-        self.slider_progressbar_frame1.grid_columnconfigure(0, weight=1)
-        self.slider_progressbar_frame1.grid_rowconfigure(3, weight=1)
-        
-        #Label do Controle Autônomo
-        self.label_machine1 = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text="Controle Autônomo")
-        self.label_machine1.configure(font=("Segoe UI", 30))
-        self.label_machine1.grid(row=0, column=0, columnspan=2, padx=(50,50), pady=(10,25), sticky="")
-
-        #Botão para iniciar 
-        self.button_inicio_autonomo = customtkinter.CTkButton(master=self.slider_progressbar_frame1,
-                                                text="Iniciar",
-                                                command=self.activate_autonomous)
-        self.button_inicio_autonomo.grid(pady=(5, 5), padx=(5, 5), row=1, column=0)
-
-        self.button_parada_autonomo = customtkinter.CTkButton(master=self.slider_progressbar_frame1,
-                                                text="Parar",
-                                                command=self.stop_autonomous)
-        self.button_parada_autonomo.grid(pady=(5, 5), padx=(5, 35), row=1, column=1)
-
-        self.button_parada_autonomo = customtkinter.CTkButton(master=self.slider_progressbar_frame1,
-                                                text="Limpar Derrota",
-                                                command=self.clean_autonomous)
-        self.button_parada_autonomo.grid(pady=(15, 5), padx=(35, 35), row=2, column=0)
-
-
-    #Função para ativar o início da derrota autônoma no MOOS-IvP
-    def activate_autonomous(self): 
-        string_update = []
-        #Crio a lista com todos os pontos da derrota autônoma
-        for ponto in self.pontos_autonomos:
-            #Converto para coordenadas locais antes de enviar
-            x, y = pyproj.transform(self.projection_global, self.projection_local, ponto[1], ponto[0])
-            string_update.append(str(x)+","+str(y)+":")
-        #Junto os pontos
-        string_update = ''.join(string_update)
-        string_update = string_update[:-1] #Removo o último ":" da string
-        string_update = 'polygon='+string_update #colocar entre aspas para o MOOS-IvP entender
-
-        #Caso o deploy seja false, passo para true
-        if self.deploy == 'false':
-            self.comms.notify('DEPLOY', 'true',pymoos.time())
-        
-        #Atualizo a derrota no MOOS
-        self.comms.notify('WPT_UPDATE', string_update,pymoos.time())
-        #Configuro a endflag END para false e assim retomar o controle autonomo
-        self.comms.notify('END', 'false',pymoos.time())
-        #Executo a função para mostrar o waypoint ativo
-        self.update_active_autonomous_point()
-
-
-        
-
-    #Função para parar o controle autônomo no MOOS-IvP
-    def stop_autonomous(self):
-        #Desativa o pHelmIvP no MOOS
-        self.comms.notify('END', 'true',pymoos.time())
-        
-
-    #Função para limpar a derrota autônoma no MOOS-IvP
-    def clean_autonomous(self):
-        #Deleto os caminhos criados
-        self.map_widget.delete_all_path()
-
-        #Removo pontos da lista self.marker_autonomous_list
-        for marker in self.marker_autonomous_list:
-            marker.delete()
-
-        #Limpo a lista self.pontos_autonomos
-        self.pontos_autonomos = []
 
         
 
