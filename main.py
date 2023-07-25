@@ -118,7 +118,10 @@ class App(customtkinter.CTk):
         self.view_seglist = None
         self.view_point = None
         self.ponto_ativo_marker = None
+        self.station_keep_marker = None
         self.deploy = None
+        self.bhv_settings = None #Comportamento ativo no momento
+        self.ivphelm_bhv_active = None 
 
         #Carrego imagens para os ícones
         self.current_path = os.path.join(os.path.dirname(os.path.abspath(__file__)))
@@ -286,8 +289,9 @@ class App(customtkinter.CTk):
         self.checkbox.grid(row=17, column=0, padx=(20, 20), pady=(10, 20))
 
         ###Imagem da camera
-        rtsp_url = 'rtsp://172.18.14.214/axis-media/media.amp'
-        self.vid = cv2.VideoCapture(rtsp_url)
+        self.vid = cv2.VideoCapture('teste.mp4')
+        #rtsp_url = 'rtsp://172.18.14.214/axis-media/media.amp' #Para usar na lancha
+        #self.vid = cv2.VideoCapture(rtsp_url)
         self.camera_width , self.camera_height = 800,600
 
         # Set the width and height
@@ -324,6 +328,7 @@ class App(customtkinter.CTk):
         self.update_ship_position() #Loop para atualizar a posição do navio
         self.update_gui() #Loop para atualizar dados na GUI
         self.update_ais_contacts() #Loop para atualizar os contatos AIS
+        self.update_station_keep() #Loop para atualizar posição do station keep
         #self.update_lista_praticagem() #Loop para atualizar a lista de praticagem
 
 
@@ -364,6 +369,8 @@ class App(customtkinter.CTk):
         #Variáveis do MOOS para o controle autônomo
         self.comms.register('VIEW_SEGLIST', 0) #rela de pontos
         self.comms.register('VIEW_POINT', 0) #Ponto autônomo ativo no momento
+        self.comms.register('BHV_SETTINGS', 0) #Comportamento ativo no momento
+        self.comms.register('IVPHELM_BHV_ACTIVE', 0) #Comportamento ativo no momento
 
         
         return True
@@ -404,11 +411,48 @@ class App(customtkinter.CTk):
                 val = msg.string()
                 self.deploy = val
                 #print("Deploy: "+val)
+            elif msg.name() == 'BHV_SETTINGS': 
+                val = msg.string()
+                self.bhv_settings = val
+                #print('Comportamento ativo no momento: '+self.bhv_settings)
+            elif msg.name() == 'IVPHELM_BHV_ACTIVE':
+                val = msg.string()
+                self.ivphelm_bhv_active = val
+                print(self.ivphelm_bhv_active)
+                
                 
             
         return True
     
     #### Funções do controle autônomo ###
+    
+    #Atualiza o station_keep
+    def update_station_keep(self):
+        if self.bhv_settings is not None and self.ivphelm_bhv_active == "end-station":
+            vars_station = self.bhv_settings.split(",") #Divido variáveis
+            
+            x = float(vars_station[2][2:]) #Pego o valor de x do station keep
+            y = float(vars_station[3][2:]) #Pego o valor de y do station keep
+            
+            #Converto x e y para lat e long
+            inv_longitude, inv_latitude = pyproj.transform(self.projection_local, self.projection_global, x-self.diff_x, y-self.diff_y)
+
+            station_keep_image = ImageTk.PhotoImage(Image.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "images", "circle_station_keep.png")).resize((70, 70)))
+            
+            
+            if self.station_keep_marker is None:
+                self.station_keep_marker = self.map_widget.set_marker(inv_latitude, inv_longitude, icon=station_keep_image)
+            else:
+                self.station_keep_marker.set_position(inv_latitude,inv_longitude)
+        else:
+            if self.station_keep_marker is not None:
+                self.station_keep_marker.delete() #Deleto o marker
+                self.station_keep_marker = None
+                
+        self.after(1000,self.update_station_keep)
+        
+        
+            
     
     #Atualiza o ponto ativo no momento
     def update_active_autonomous_point(self):
