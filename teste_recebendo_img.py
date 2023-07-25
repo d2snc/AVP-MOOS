@@ -7,6 +7,8 @@ import time
 import socket
 import cv2
 
+#Atualmente rebendo imagens e descendo como waterfall
+
 
 #Dados da conexão UDP
 
@@ -14,7 +16,7 @@ localIP     = "127.0.0.1" #IP de quem está transmitindo os pacotes UDP de image
 
 localPort   = 3000
 
-bufferSize  = 1024
+bufferSize  = 4096
 
 # Create a datagram socket
 
@@ -48,7 +50,7 @@ waterfall_img = None
 # Display settings
 screen = pygame.display.set_mode((width, height))
 pygame.display.set_caption('Waterfall')
-i = height
+i = 0
 k = 0
 scroll = 0  # Variável para o scroll
 
@@ -76,35 +78,41 @@ while True:
 
     image_data += message
 
-    current_img = np.frombuffer(image_data, dtype=np.uint8)
-    image = cv2.imdecode(current_img, cv2.IMREAD_UNCHANGED)
-    brilho_aumentado = 1
-    imagem_brilho_aumentado = cv2.add(image, brilho_aumentado)
+    if len(message) > 0:
 
-    current_img = np.array(imagem_brilho_aumentado)
-    #current_img = np.array(current_img)
-    
+        current_img = np.frombuffer(image_data, dtype=np.uint8)
+        image = cv2.imdecode(current_img, cv2.IMREAD_UNCHANGED)
+        brilho_aumentado = 1
+        imagem_brilho_aumentado = cv2.add(image, brilho_aumentado)
 
-    
-    #current_img = np.array(current_img)  # Pedaço de imagem vinda do ping
-
-    # Adiciono esse pedaço de imagem a um pedaço maior de imagem
-    if waterfall_img is None:
-        waterfall_img = current_img
-    else:
-        waterfall_img = np.concatenate((waterfall_img, current_img), axis=0)
-        img = Image.fromarray(waterfall_img)
-        pygame_image = pygame.image.fromstring(img.tobytes(), img.size, img.mode)    
-        screen.blit(pygame_image, (0, i + scroll))
-        screen.blit(overlay_surface, (0, 0))
-        i -= 1    
+        current_img = np.array(imagem_brilho_aumentado)
+        #current_img = np.array(current_img)
         
 
-    # Update the main screen
-    pygame.display.update()
+        
+        #current_img = np.array(current_img)  # Pedaço de imagem vinda do ping
 
-    # Draw rectangles on the overlay surface
-    overlay_surface.fill((0, 0, 0, 0))  # Clear the overlay
+        # Adiciono esse pedaço de imagem a um pedaço maior de imagem
+        if waterfall_img is None:
+            waterfall_img = current_img
+        else:
+            waterfall_img = np.concatenate((current_img, waterfall_img), axis=0)
+            img = Image.fromarray(waterfall_img)
+            pygame_image = pygame.image.fromstring(img.tobytes(), img.size, img.mode)    
+            screen.blit(pygame_image, (0, -scroll))
+            screen.blit(overlay_surface, (0, 0))
+            i += 1   
+            
+            pygame.display.flip()
+            
+
+        # Update the main screen
+        pygame.display.update()
+
+        # Draw rectangles on the overlay surface
+        overlay_surface.fill((0, 0, 0, 0))  # Clear the overlay
+    else:
+        print("Nenhum dado recebido no socket.")
 
     # Draw existing rectangles
     for key in rectangles:
@@ -117,7 +125,7 @@ while True:
         pygame.draw.rect(overlay_surface, (255, 0, 0), rect, 1)
         
         #Update value of rectangle position
-        rectangles.update({key:[x1, y1-1, x2, y2-1]})
+        rectangles.update({key:[x1, y1+1, x2, y2+1]})
 
     # Draw new rectangle
     if start_pos is not None and end_pos is not None:
@@ -134,7 +142,7 @@ while True:
 
     pygame.display.flip()  # Update the entire screen
 
-    time.sleep(0.1)
+    #time.sleep(0.1)
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:

@@ -19,7 +19,9 @@ from PIL import ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 from tkinter import ttk
 
-
+#Configuração do acesso ao moos-ivp
+IP_MOOS = "127.0.0.1"
+PORTA_MOOS = 9000
 
 # Configuração do AIS da PRT
 ip_address = '201.76.184.242' 
@@ -55,6 +57,9 @@ class App(customtkinter.CTk):
         self.createcommand('tk::mac::Quit', self.on_closing)
 
         #Variáveis para a conversão de coordenadas no controle autônomo
+        #Dados para Salvador
+        #LatOrigin = -12.97933112028696
+        #LongOrigin = -38.5666610393065
         #Dados para o RJ
         LatOrigin = -22.93335 
         LongOrigin = -43.136666665 
@@ -309,7 +314,7 @@ class App(customtkinter.CTk):
         
         self.comms.set_on_connect_callback(self.onc)
         self.comms.set_on_mail_callback(self.onm)
-        self.comms.run('localhost', 9000, 'avp-moos')
+        self.comms.run(IP_MOOS, PORTA_MOOS, 'avp-moos') #Aq configuramos o ip do computador com MOOS para fazer a conexão
 
         #Loop para atualizar a posição do navio
         
@@ -369,10 +374,10 @@ class App(customtkinter.CTk):
 
             if msg.name() == 'NAV_LAT':
                 self.nav_lat = val
-                print("Latitude: "+str(round(self.nav_lat,8)))
+                #print("Latitude: "+str(round(self.nav_lat,8)))
             elif msg.name() == 'NAV_LONG':
                 self.nav_long = val
-                print("Longitude: "+str(round(self.nav_long,8)))
+                #print("Longitude: "+str(round(self.nav_long,8)))
             elif msg.name() == 'NAV_HEADING':
                 self.nav_heading = val
             elif msg.name() == 'NAV_SPEED':
@@ -523,6 +528,11 @@ class App(customtkinter.CTk):
                                                 text="Limpar Derrota",
                                                 command=self.clean_autonomous)
         self.button_parada_autonomo.grid(pady=(15, 5), padx=(35, 35), row=2, column=0)
+        
+        self.button_remove_ultimo = customtkinter.CTkButton(master=self.slider_progressbar_frame1,
+                                                text="Remover Último Ponto",
+                                                command=self.clean_last_autonomous)
+        self.button_remove_ultimo.grid(pady=(15, 5), padx=(35, 60), row=2, column=1)
 
 
     #Função para ativar o início da derrota autônoma no MOOS-IvP
@@ -541,6 +551,8 @@ class App(customtkinter.CTk):
         #Caso o deploy seja false, passo para true
         if self.deploy == 'false':
             self.comms.notify('DEPLOY', 'true',pymoos.time())
+            self.comms.notify('MOOS_MANUAL_OVERIDE', 'false',pymoos.time())
+            self.comms.notify('RETURN', 'false',pymoos.time())
         
         #Atualizo a derrota no MOOS
         self.comms.notify('WPT_UPDATE', string_update,pymoos.time())
@@ -553,8 +565,38 @@ class App(customtkinter.CTk):
     def stop_autonomous(self):
         #Desativa o pHelmIvP no MOOS
         self.comms.notify('END', 'true',pymoos.time())
+        #Atualiza a posição da station keep
+         #Converto para coordenadas locais antes de enviar
+        x, y = pyproj.transform(self.projection_global, self.projection_local, self.nav_long, self.nav_lat)
+        string= str(round(x,2)+self.diff_x)+","+str(round(y,2)+self.diff_y)
+        self.comms.notify('STATION_UPDATES', 'station_pt='+string,pymoos.time())
         
 
+    #Função para deletar o último ponto da derrota autônoma criada
+    def clean_last_autonomous(self):
+        
+        #Deleta pontos de indicação da derrota
+        for marker in self.marker_autonomous_list:
+            marker.delete()
+        self.pontos_autonomos.pop() #Removo o último ponto na lista
+        self.marker_autonomous_list.pop() #Deleta da lista o ícone
+        
+        #Deleto toda a derrota do mapa
+        self.map_widget.delete_all_path()
+        
+        #Defino o caminho
+        self.path_1 = self.map_widget.set_path(self.pontos_autonomos)
+        
+        #Crio a derrota
+        for ponto in self.pontos_autonomos:
+            self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1], text="#"+str(self.pontos_autonomos.index(ponto)+1)+" Ponto de derrota autônoma"))
+
+
+        
+        
+        
+        
+    
     #Função para limpar a derrota autônoma no MOOS-IvP
     def clean_autonomous(self):
         #Deleto os caminhos criados
@@ -771,6 +813,13 @@ class App(customtkinter.CTk):
 
         #Desativa o pHelmIvP no MOOS
         self.comms.notify('END', 'true',pymoos.time())
+        
+        #Atualiza a posição da station keep
+         #Converto para coordenadas locais antes de enviar
+        x, y = pyproj.transform(self.projection_global, self.projection_local, self.nav_long, self.nav_lat)
+        string= str(round(x,2)+self.diff_x)+","+str(round(y,2)+self.diff_y)
+        self.comms.notify('STATION_UPDATES', 'station_pt='+string,pymoos.time())
+        
 
 
         
@@ -821,7 +870,7 @@ class App(customtkinter.CTk):
         self.progressbar_2 = customtkinter.CTkProgressBar(self.slider_progressbar_frame,width=300)
         self.progressbar_2.grid(row=5, column=0, padx=(20, 10), pady=(0, 0),sticky="nsew")
         
-        self.slider_1 = customtkinter.CTkSlider(self.slider_progressbar_frame, from_=-30, to=30, number_of_steps=60)
+        self.slider_1 = customtkinter.CTkSlider(self.slider_progressbar_frame, from_=-40, to=40, number_of_steps=80)
         self.slider_1.grid(row=4, column=0, padx=(20, 10), pady=(15, 15), sticky="ew")
         self.bind("<Left>", self.decrement_slider1) #Configuração para teclas de seta
         self.bind("<Right>", self.increment_slider1)
