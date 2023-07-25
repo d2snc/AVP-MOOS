@@ -75,6 +75,7 @@ class App(customtkinter.CTk):
 
         #Auxiliar na plotagem da derrota autônoma
         self.pontos_autonomos = []
+        self.pontos_sonar = []
 
 
         #Auxiliar para plotagem dos pontos da derrota autonoma
@@ -285,7 +286,8 @@ class App(customtkinter.CTk):
         self.checkbox.grid(row=17, column=0, padx=(20, 20), pady=(10, 20))
 
         ###Imagem da camera
-        self.vid = cv2.VideoCapture('teste.mp4')
+        rtsp_url = 'rtsp://172.18.14.214/axis-media/media.amp'
+        self.vid = cv2.VideoCapture(rtsp_url)
         self.camera_width , self.camera_height = 800,600
 
         # Set the width and height
@@ -659,49 +661,12 @@ class App(customtkinter.CTk):
 
     #Plota a imagem vinda do sonar na carta náutica
     def receive_sonar(self):
-        #Recebo a imagem pelo socket
-        bufferSize = 4096
-        bytesAddressPair = self.sonar_socket.recvfrom(bufferSize)
-        message = bytesAddressPair[0]
-        image_data = b""
-        image_data += message
-        
-        image_stream = io.BytesIO(image_data)
-        image = Image.open(image_stream).convert('RGBA')
-        #Rotaciono a imagem
-        #if int(self.nav_heading) > 180:
-        #angulo_image = (int(self.nav_heading)+90) % 360
-
-        #Combino com a imagem grande
-        if self.waterfall_img is None:
-            self.waterfall_img = image
-        else: 
-            dst = Image.new('RGBA', (self.waterfall_img.width, self.waterfall_img.height + image.height))
-            dst.paste(self.waterfall_img, (0, 0))
-            dst.paste(image, (0, self.waterfall_img.height))
-            self.waterfall_img = dst
-
-        #image = image.rotate(angulo_image,expand=True)
-
-        photo = ImageTk.PhotoImage(self.waterfall_img)
-        
-        #create a marker in map with photo
-        if (self.map_widget.winfo_exists() == 1): #Verifica se o mapa existe
-            #Plota a imagem recebida pelo sonar
-            #Crio um marker fixo
-            if self.markers_sonar is None:
-                self.markers_sonar= self.map_widget.set_marker(self.nav_lat, self.nav_long, icon=photo,icon_anchor='n') #ancorei no norte
+        self.pontos_sonar.append((self.nav_lat-0.0001,self.nav_long-0.0001))
+        if (len(self.pontos_sonar) > 1):
+            self.path_2 = self.map_widget.set_path(self.pontos_sonar)
                 
-            else: #Atualiza a imagem
-                self.markers_sonar.change_icon(photo)
-                
-
-            
-            #Aumenta o contador
-            #self.contador_sonar +=1
-            #self.map_widget.set_marker(-22.910369249774234, -43.15891349244546, icon=photo)
         
-        self.after(100,self.receive_sonar) #A cada 0,1 segundo ele vai receber posição sonar
+        self.after(1000,self.receive_sonar) #A cada 0,1 segundo ele vai receber posição sonar
             
 
 
@@ -1041,7 +1006,7 @@ class App(customtkinter.CTk):
             self.label_widget.configure(image=photo_image)
         
             # Repeat the same process after every 10 seconds
-            self.label_widget.after(10, self.open_camera)
+            self.label_widget.after(5, self.open_camera)
 
 
     def search_event(self, event=None):
