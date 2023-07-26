@@ -17,7 +17,7 @@ from pyais import decode
 #Para safar imagens truncadas do sonar
 from PIL import ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
-from tkinter import ttk
+from tkinter import ttk, simpledialog
 
 #Configuração do acesso ao moos-ivp
 IP_MOOS = "127.0.0.1"
@@ -120,6 +120,7 @@ class App(customtkinter.CTk):
         self.ponto_ativo_marker = None
         self.station_keep_marker = None
         self.deploy = None
+        self.return_var = None
         self.bhv_settings = None #Comportamento ativo no momento
         self.ivphelm_bhv_active = None 
 
@@ -282,6 +283,11 @@ class App(customtkinter.CTk):
         self.map_widget.add_right_click_menu_command(label="Adicionar ponto de derrota autônoma",
                                             command=self.add_autonomous_point,
                                             pass_coords=True)
+        
+        #Varredura sonar
+        self.map_widget.add_right_click_menu_command(label="Adicionar varredura sonar",
+                                            command=self.add_sonar_sweep,
+                                            pass_coords=True)
 
         
         #Botão que liga/desliga AIS da praticagem
@@ -419,6 +425,9 @@ class App(customtkinter.CTk):
                 val = msg.string()
                 self.ivphelm_bhv_active = val
                 print(self.ivphelm_bhv_active)
+            elif msg.name() == 'RETURN':
+                val = msg.string()
+                self.return_var = val
                 
                 
             
@@ -510,7 +519,69 @@ class App(customtkinter.CTk):
             # Ploto a derrota no mapa
             #path_1 = self.map_widget.set_path([self.marker_autonomous_list[0].position, self.marker_autonomous_list[1].position, (-43.15947614659043, -22.911947446774985), (-43.15947564792508, -22.908967568090326)])
 
-     #Adiciona ponto de derrota autônoma no mapa
+    #Adiciona a varredura sonar no mapa
+    def add_sonar_sweep(self,coords):
+        
+        #Transformo coordenadas globais em locais
+        
+        x, y = pyproj.transform(self.projection_global, self.projection_local, coords[1], coords[0])
+        
+        string_varredura_inicial='points=format=lawnmower,x='+str(round(x,2))+',y='+str(round(y,2))+',degs=0,height=500,width=1800,lane_width=150'
+        print(string_varredura_inicial)
+        #Envia a varredura sonar para o MOOS
+        self.comms.notify('WPT_UPDATE', string_varredura_inicial,pymoos.time())
+        
+        print("Enviado para o MOOS -> WPT_UPDATE="+string_varredura_inicial)
+        
+        #Inicia e depois para
+        if self.deploy == 'false' or self.return_var == 'true':
+            self.comms.notify('DEPLOY', 'true',pymoos.time())
+            self.comms.notify('MOOS_MANUAL_OVERIDE', 'false',pymoos.time())
+            self.comms.notify('RETURN', 'false',pymoos.time())
+        self.comms.notify('END', 'false',pymoos.time())
+        #Caso não atualize a varredura, aumentar o delay aqui
+        time.sleep(1)
+        self.comms.notify('END', 'true',pymoos.time())
+        
+        #Após enviar atualiza os pontos na tela
+        
+        #Deleta pontos de indicação da derrota
+        for marker in self.marker_autonomous_list:
+            marker.delete()
+            
+        #Deleta o caminho do mapa
+        self.map_widget.delete_all_path()
+        
+        #Limpo a lista self.pontos_autonomos
+        self.pontos_autonomos = []
+        
+        #Pega os pontos da variável e cria a nova derrota
+        if self.view_seglist is not None: #Checa se a lista não está vazia
+            #Extrair coordenadas da self.view_seglist
+            start_index = self.view_seglist.find("pts={") + len("pts={")
+            end_index = self.view_seglist.find("}")
+            pts_string = self.view_seglist[start_index:end_index]
+            points = pts_string.split(":")
+
+            # Converte os pontos para coordenadas de mapa e armazena
+            
+            for match in points:
+                match = match.split(",")
+                #Conversão de coordenadas locais para globais
+                inv_longitude, inv_latitude = pyproj.transform(self.projection_local, self.projection_global, float(match[0])-self.diff_x, float(match[1])-self.diff_y)
+
+                #Adiciono os pontos na lista
+                self.pontos_autonomos.append((inv_latitude, inv_longitude))
+                
+            #Defino o caminho
+            self.path_1 = self.map_widget.set_path(self.pontos_autonomos)
+
+            #Definindo pontos da derrota como markers
+            for ponto in self.pontos_autonomos:
+                self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1], text="#"+str(self.pontos_autonomos.index(ponto)+1)+" Ponto de derrota autônoma"))
+
+    
+    #Adiciona ponto de derrota autônoma no mapa
 
     def add_autonomous_point(self,coords):
         print("Adicionar ponto de derrota:", coords)
@@ -538,6 +609,15 @@ class App(customtkinter.CTk):
         self.slider_progressbar_frame1.destroy()
         self.label_machine1.destroy()
         self.ponto_ativo_marker.destroy()
+        
+        #Desativa o pHelmIvP do MOOS
+        self.comms.notify('END', 'true',pymoos.time())
+        
+        #Atualiza a posição da station keep
+         #Converto para coordenadas locais antes de enviar
+        x, y = pyproj.transform(self.projection_global, self.projection_local, self.nav_long, self.nav_lat)
+        string= str(round(x,2)+self.diff_x)+","+str(round(y,2)+self.diff_y)
+        self.comms.notify('STATION_UPDATES', 'station_pt='+string,pymoos.time())
         
 
         pass
@@ -595,7 +675,7 @@ class App(customtkinter.CTk):
         string_update = 'polygon='+string_update #colocar entre aspas para o MOOS-IvP entender
 
         #Caso o deploy seja false, passo para true
-        if self.deploy == 'false':
+        if self.deploy == 'false' or self.return_var == 'true':
             self.comms.notify('DEPLOY', 'true',pymoos.time())
             self.comms.notify('MOOS_MANUAL_OVERIDE', 'false',pymoos.time())
             self.comms.notify('RETURN', 'false',pymoos.time())
@@ -616,6 +696,8 @@ class App(customtkinter.CTk):
         x, y = pyproj.transform(self.projection_global, self.projection_local, self.nav_long, self.nav_lat)
         string= str(round(x,2)+self.diff_x)+","+str(round(y,2)+self.diff_y)
         self.comms.notify('STATION_UPDATES', 'station_pt='+string,pymoos.time())
+        #Envio o RETURN=true - Ele só parava assim
+        self.comms.notify('RETURN', 'true',pymoos.time())
         
 
     #Função para deletar o último ponto da derrota autônoma criada
