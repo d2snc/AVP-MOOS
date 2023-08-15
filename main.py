@@ -10,7 +10,7 @@ import socket
 import io
 import re
 import pyproj
-from auvlib.data_tools import jsf_data, utils
+#from auvlib.data_tools import jsf_data, utils
 from tkintermapview import TkinterMapView
 from PIL import Image, ImageTk
 from pyais import decode
@@ -32,6 +32,11 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 # Connect to the server
 #sock.connect((ip_address, port))
+
+######################################################
+### Configuração de velocidade para trocar marcha ###
+thrust_gear_limit = 1
+#####################################################
 
 
 customtkinter.set_default_color_theme("blue")
@@ -175,7 +180,7 @@ class App(customtkinter.CTk):
 
         self.button_5 = customtkinter.CTkButton(master=self.frame_left,
                                                 text="Controle Remoto",
-                                                command=self.activate_control)
+                                                command=self.activate_remote_control)
         self.button_5.grid(pady=(20, 0), padx=(20, 20), row=4, column=0)
 
         self.button_controle_autonomo = customtkinter.CTkButton(master=self.frame_left,
@@ -337,8 +342,6 @@ class App(customtkinter.CTk):
         self.update_station_keep() #Loop para atualizar posição do station keep
         #self.update_lista_praticagem() #Loop para atualizar a lista de praticagem
 
-
-
     def activate_sss(self):
         os.popen('python3 funcionando_recebendo_img.py')
 
@@ -461,8 +464,6 @@ class App(customtkinter.CTk):
         self.after(1000,self.update_station_keep)
         
         
-            
-    
     #Atualiza o ponto ativo no momento
     def update_active_autonomous_point(self):
         data_point = self.view_point.split(",")
@@ -483,7 +484,6 @@ class App(customtkinter.CTk):
         
         self.after(1000,self.update_active_autonomous_point)
 
-    
     #Atualiza a derrota autônoma - Executar apenas quando ativar a opção de controle autônomo
     def update_autonomous(self):
         self.create_menu_autonomous()
@@ -580,7 +580,6 @@ class App(customtkinter.CTk):
             for ponto in self.pontos_autonomos:
                 self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1], text="#"+str(self.pontos_autonomos.index(ponto)+1)+" Ponto de derrota autônoma"))
 
-    
     #Adiciona ponto de derrota autônoma no mapa
 
     def add_autonomous_point(self,coords):
@@ -718,12 +717,7 @@ class App(customtkinter.CTk):
         #Crio a derrota
         for ponto in self.pontos_autonomos:
             self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1], text="#"+str(self.pontos_autonomos.index(ponto)+1)+" Ponto de derrota autônoma"))
-
-
-        
-        
-        
-        
+    
     
     #Função para limpar a derrota autônoma no MOOS-IvP
     def clean_autonomous(self):
@@ -782,9 +776,6 @@ class App(customtkinter.CTk):
         print("Adicionar Possível Mina:", coords)
         mina_marker = self.map_widget.set_marker(coords[0], coords[1], text="Possível mina",image=mina_image)
     
-
-    
-
     #Plota a imagem vinda do sonar na carta náutica
     def receive_sonar(self):
         self.pontos_sonar.append((self.nav_lat-0.0001,self.nav_long-0.0001))
@@ -794,7 +785,6 @@ class App(customtkinter.CTk):
         
         self.after(1000,self.receive_sonar) #A cada 0,1 segundo ele vai receber posição sonar
             
-
 
     #TODO Adicionar função que ao clicar em um contato AIS abra um pop-up mostrando informações do navio
     #TODO Adicionar função no botão da AIS praticagem para remover todos os contatos da tela quando apertar no botão
@@ -844,10 +834,7 @@ class App(customtkinter.CTk):
                 self.markers_ais[self.last_ais_msg.mmsi].change_icon(ship_image)
         self.after(1000,self.update_ais_contacts) #Coloco essa função em loop para repetir a cada 1 seg dentro do programa
 
-        
-        
-
-    
+          
     #Função para atualizar dados na GUI:
     def update_gui(self):
         degrees, minutes, seconds = self.decimal_degrees_to_dms(self.nav_lat)
@@ -884,18 +871,20 @@ class App(customtkinter.CTk):
     def marker_callback(self,marker): #O que acontece quando clica no marker
         print(marker.text)
 
-        
-
     def destroy_control(self): #Destrói o frame com o controle
-        self.button_5.configure(command=self.activate_control,text="Controle Remoto")
+        self.button_5.configure(command=self.activate_remote_control,text="Controle Remoto")
         self.slider_progressbar_frame.destroy()
         self.label_machine.destroy()
-        self.label_leme.destroy()
-        self.label_controle.destroy()
-        self.progressbar_2.destroy()
-        self.progressbar_3.destroy()
-        self.slider_1.destroy()
-        self.slider_2.destroy()
+        self.label_rudder_value.destroy()
+        self.label_rudder.destroy()
+        self.label_gear.destroy()
+        self.label_control.destroy()
+        self.rudder_progressbar.destroy()
+        self.thrust_progressbar.destroy()
+        self.slider_rudder.destroy()
+        self.thrust_slider.destroy()
+        self.gear_slider.destroy()
+        self.label_gear_value.destroy()
         #self.combobox.destroy()
 
         #Desativa o controle manual no MOOS
@@ -911,11 +900,8 @@ class App(customtkinter.CTk):
         string= str(round(x,2)+self.diff_x)+","+str(round(y,2)+self.diff_y)
         self.comms.notify('STATION_UPDATES', 'station_pt='+string,pymoos.time())
         
+    def activate_remote_control(self): #Cria o frame com o controle
 
-
-        
-
-    def activate_control(self): #Cria o frame com o controle
         #Envia a configuração para o MOOS-Ivp para o controle manual começar
         
         ## Comandos para iniciar o pHelmIvP
@@ -929,8 +915,6 @@ class App(customtkinter.CTk):
         #Seto a variável auxiliar para True
         self.controle_manual = True
             
-
-
         self.button_5.configure(command=self.destroy_control,text="Desativar Controle Remoto")
         #Frame com slider para controle de velocidade   
 
@@ -943,55 +927,74 @@ class App(customtkinter.CTk):
         self.slider_progressbar_frame.grid_rowconfigure(1, weight=1)
         
         #Label do Controle Remoto
-        self.label_machine = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text="Controle Remoto")
-        self.label_machine.configure(font=("Segoe UI", 30))
-        self.label_machine.grid(row=0, column=0, columnspan=1, padx=(10,0), pady=(10,30), sticky="")
+        self.label_remote = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text="Controle Remoto")
+        self.label_remote.configure(font=("Segoe UI", 30))
+        self.label_remote.grid(row=0, column=0, columnspan=1, padx=(10,0), pady=(10,30), sticky="")
+
+        #Label de Marcha
+        self.label_gear = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text="Marcha")
+        self.label_gear.configure(font=("Segoe UI", 20))
+        self.label_gear.grid(row=1, column=0, columnspan=1, padx=(5,0), pady=(10,20), sticky="")
+
+        self.gear_slider = customtkinter.CTkSlider(master=self.slider_progressbar_frame, from_=-1, to=1, number_of_steps=2, orientation="vertical",height=100)
+        self.gear_slider.grid(row=0, column=3, rowspan=5, padx=(10, 15), pady=(20, 10))
+
+        self.bind("d", self.backward_gear)
+        self.bind("s", self.neutral_gear)
+        self.bind("a", self.forward_gear)   
 
         #Label do Leme
-        self.label_machine = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text="Leme")
-        self.label_machine.configure(font=("Segoe UI", 20))
-        self.label_machine.grid(row=3, column=0, columnspan=1, padx=(10,0), pady=(10,20), sticky="")
+        self.label_rudder = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text="Leme")
+        self.label_rudder.configure(font=("Segoe UI", 20))
+        self.label_rudder.grid(row=3, column=0, columnspan=1, padx=(10,0), pady=(10,20), sticky="")
 
-        #Label das Máquinas
+        self.rudder_progressbar = customtkinter.CTkProgressBar(master=self.slider_progressbar_frame,width=300)
+        self.rudder_progressbar.grid(row=5, column=0, padx=(20, 10), pady=(0, 0),sticky="nsew")
         
-        self.label_machine = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text="Máquinas")
-        self.label_machine.configure(font=("Segoe UI", 20))
-        self.label_machine.grid(row=1, column=0, columnspan=1, padx=(190,0), pady=(20,20), sticky="")
+        self.slider_rudder = customtkinter.CTkSlider(self.slider_progressbar_frame, from_=-40, to=40, number_of_steps=80)
+        self.slider_rudder.grid(row=4, column=0, padx=(20, 10), pady=(15, 15), sticky="ew")
+        self.bind("<Left>", self.decrement_rudder_slider) #Configuração para teclas de seta
+        self.bind("<Right>", self.increment_rudder_slider)
 
-        self.progressbar_2 = customtkinter.CTkProgressBar(self.slider_progressbar_frame,width=300)
-        self.progressbar_2.grid(row=5, column=0, padx=(20, 10), pady=(0, 0),sticky="nsew")
-        
-        self.slider_1 = customtkinter.CTkSlider(self.slider_progressbar_frame, from_=-40, to=40, number_of_steps=80)
-        self.slider_1.grid(row=4, column=0, padx=(20, 10), pady=(15, 15), sticky="ew")
-        self.bind("<Left>", self.decrement_slider1) #Configuração para teclas de seta
-        self.bind("<Right>", self.increment_slider1)
-        self.bind("<Up>", self.increment_slider2)
-        self.bind("<Down>", self.decrement_slider2)
-        self.slider_2 = customtkinter.CTkSlider(self.slider_progressbar_frame, from_=0, to=1, number_of_steps=100, orientation="vertical",height=400)
-        self.slider_2.grid(row=0, column=1, rowspan=5, padx=(10, 15), pady=(20, 10))
-        self.slider_2.set(0) #Zero o slider de máquinas
-        self.progressbar_3 = customtkinter.CTkProgressBar(self.slider_progressbar_frame, orientation="vertical",height=400)
-        self.progressbar_3.grid(row=0, column=2, rowspan=5, padx=(10, 20), pady=(20, 10))
+        #Label de Máquina
+        self.label_thrust = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text="Máquina")
+        self.label_thrust.configure(font=("Segoe UI", 20))
+        self.label_thrust.grid(row=1, column=0, columnspan=1, padx=(190,0), pady=(20,20), sticky="")
 
-        #Configurando a barra de progresso
-        self.slider_1.configure(command=self.update_value_leme) #Configurei o slider para setar a barra de progresso
-        self.progressbar_3.set(self.slider_2.get())
-        self.slider_2.configure(command=self.update_value_maquinas)
+        self.thrust_progressbar = customtkinter.CTkProgressBar(self.slider_progressbar_frame, orientation="vertical",height=400)
+        self.thrust_progressbar.grid(row=0, column=2, rowspan=5, padx=(10, 20), pady=(20, 10))
+
+        self.thrust_slider = customtkinter.CTkSlider(self.slider_progressbar_frame, from_=0, to=1, number_of_steps=100, orientation="vertical",height=400)
+        self.thrust_slider.grid(row=0, column=1, rowspan=5, padx=(10, 15), pady=(20, 10))
+        self.thrust_slider.set(0) #Zero o slider de máquinas
+        self.bind("<Up>", self.increment_thrust_slider)
+        self.bind("<Down>", self.decrement_thrust_slider)
+
+        # Configurando a barra de progresso
+        self.slider_rudder.configure(command=self.update_value_rudder) #Configurei o slider para setar a barra de progresso
+        self.thrust_progressbar.set(self.thrust_slider.get())
+        self.thrust_slider.configure(command=self.update_value_thrust)
+        self.gear_slider.configure(command=self.update_value_gear)
 
         #Porcentagem de Máquinas 
-        self.label_machine = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text=str(int(self.slider_2.get()*100))+"%")
+        self.label_machine = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text=str(int(self.thrust_slider.get()*100))+"%")
         self.label_machine.configure(font=("Segoe UI", 15))
         self.label_machine.grid(row=0, column=2, columnspan=1, padx=(5,15), pady=(5,5), sticky="n")
 
         #Angulo do Leme
-        self.label_leme = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text=str(int(self.slider_1.get()))+"°")
-        self.label_leme.configure(font=("Segoe UI", 25))
-        self.label_leme.grid(row=6, column=0, columnspan=2,rowspan=1, padx=(5,10), pady=(0,10), sticky="s")
+        self.label_rudder_value = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text=str(int(self.slider_rudder.get()))+"°")
+        self.label_rudder_value.configure(font=("Segoe UI", 25))
+        self.label_rudder_value.grid(row=6, column=0, columnspan=2,rowspan=1, padx=(5,10), pady=(0,10), sticky="s")
+
+        #Valor de Marcha
+        self.label_gear_value = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text=self.gear_value2text())
+        self.label_gear_value.configure(font=("Segoe UI", 15))
+        self.label_gear_value.grid(row=0, column=3, columnspan=1, padx=(5,15), pady=(5,5), sticky="n")   
         
         #Texto
-        self.label_controle = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text="Modo de controle")
-        self.label_controle.configure(font=("Segoe UI", 25))
-        self.label_controle.grid(row=9, column=0, rowspan=1, columnspan=2, padx=(5,10), pady=(60,15), sticky="")
+        self.label_control = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text="Modo de controle")
+        self.label_control.configure(font=("Segoe UI", 25))
+        self.label_control.grid(row=9, column=0, rowspan=1, columnspan=2, padx=(5,10), pady=(60,15), sticky="")
         
         #Menu para escolha
         self.combobox = customtkinter.CTkOptionMenu(master=self.slider_progressbar_frame,
@@ -999,53 +1002,85 @@ class App(customtkinter.CTk):
                                        command=self.optionmenu_callback)
         self.combobox.grid(row=10, column=0, rowspan=1,columnspan=2, padx=(5,10), pady=(0,205), sticky="")
 
+    def gear_value2text(self):
+        dict_gear_value = {1:"Avante",0:"Neutro",-1:"Ré"}
+        return str(dict_gear_value[int(self.gear_slider.get())])
 
-    def decrement_slider1(self, event):
-        current_value = self.slider_1.get()
+    def neutral_gear(self,event):
+        if int(self.thrust_slider.get() * 100) < thrust_gear_limit:
+            self.gear_slider.set(0)
+            self.update_value_gear(None)
+
+    def forward_gear(self,event):
+        if int(self.thrust_slider.get() * 100) < thrust_gear_limit:
+            self.gear_slider.set(1)
+            self.update_value_gear(None)
+
+    def backward_gear(self,event):
+        if int(self.thrust_slider.get() * 100) < thrust_gear_limit:
+            self.gear_slider.set(-1)
+            self.update_value_gear(None)
+
+    def decrement_rudder_slider(self, event):
+        current_value = self.slider_rudder.get()
         new_value = current_value - 1
-        self.slider_1.set(new_value)
-        self.update_value_leme(new_value)
+        self.slider_rudder.set(new_value)
+        self.update_value_rudder(new_value)
 
-    def increment_slider1(self, event):
-        current_value = self.slider_1.get()
+    def increment_rudder_slider(self, event):
+        current_value = self.slider_rudder.get()
         new_value = current_value + 1
-        self.slider_1.set(new_value)
-        self.update_value_leme(new_value)
+        self.slider_rudder.set(new_value)
+        self.update_value_rudder(new_value)
 
-    def decrement_slider2(self, event):
-        current_value = self.slider_2.get()
+    def decrement_thrust_slider(self, event):
+        current_value = self.thrust_slider.get()
         new_value = current_value - 0.01
-        self.slider_2.set(new_value)
-        self.update_value_maquinas(new_value)
+        self.thrust_slider.set(new_value)
+        self.update_value_thrust(new_value)
 
-    def increment_slider2(self, event):
-        current_value = self.slider_2.get()
+    def increment_thrust_slider(self, event):
+        current_value = self.thrust_slider.get()
         new_value = current_value + 0.01
-        self.slider_2.set(new_value)
-        self.update_value_maquinas(new_value)
+        self.thrust_slider.set(new_value)
+        self.update_value_thrust(new_value)
         
     def optionmenu_callback(self,choice):
         print("optionmenu dropdown clicked:", choice)
 
-    def update_value_maquinas(self,other):
+    def update_value_thrust(self,other):
         #print(other)
-        self.progressbar_3.set(self.slider_2.get())
-        self.label_machine.configure(text=str(int(self.slider_2.get()*100))+"%")
+        value_thrust = int(self.thrust_slider.get()*100)
+        self.thrust_progressbar.set(self.thrust_slider.get())
+        self.label_machine.configure(text=str(value_thrust)+"%")
 
         if self.controle_manual is True:
-            self.comms.notify('DESIRED_THRUST', int(self.slider_2.get()*100),pymoos.time())
-            print("DESIRED_THRUST: ", int(self.slider_2.get()))
+            self.comms.notify('DESIRED_THRUST',value_thrust,pymoos.time())
+            print("DESIRED_THRUST: ", value_thrust)
 
-    def update_value_leme(self,other):
+    def update_value_rudder(self,other):
         #print(other)
-        self.progressbar_2.set(self.slider_1.get())
-        self.label_leme.configure(text=str(int(self.slider_1.get()))+"°")
+        value_rudder = int(self.slider_rudder.get())
+        self.rudder_progressbar.set(self.slider_rudder.get())
+        self.label_rudder_value.configure(text=str(value_rudder)+"°")
 
         if self.controle_manual is True:
-            self.comms.notify('DESIRED_RUDDER', int(self.slider_1.get()),pymoos.time())
-            print("DESIRED_RUDDER: ", int(self.slider_1.get()))
+            self.comms.notify('DESIRED_RUDDER', value_rudder,pymoos.time())
+            print("DESIRED_RUDDER: ", value_rudder)
+
+    def update_value_gear(self,other):
+        #print(other)
+        if int(self.thrust_slider.get() * 100) < thrust_gear_limit:
+            dict_gear = {0:0,-1:2,1:1}
+            value_gear = dict_gear[int(self.gear_slider.get())]
+            self.label_gear_value.configure(text=self.gear_value2text())
+
+            #self.label_machine.configure(text=str(value_thrust)+"%")
+
+            if self.controle_manual is True:
+                self.comms.notify('DESIRED_GEAR',value_gear,pymoos.time())
+                print("DESIRED_GEAR: ", value_gear)
         
-
     def destroy_maps(self):
         self.map_widget.destroy() #Deleta o mapa
         self.entry.destroy() #Deleta a pesquisa
@@ -1053,8 +1088,6 @@ class App(customtkinter.CTk):
         self.button_4.configure(command=self.open_maps,text="Ativar Mapas") #Configura o botão para ativar os mapas novamente
         #self.frame_right.grid_columnconfigure(3, weight=2) #Configura o grid para que o label da câmera ocupe todo o espaço
         self.label_widget.grid(row=0, rowspan=1, column=1, columnspan=3, sticky="nswe") #Coloco a câmera no centro
-
-        
 
     def open_maps(self):
         self.label_widget.grid(row=0, rowspan=1, column=2, columnspan=3, sticky="nswe") #Câmera no canto
@@ -1134,7 +1167,6 @@ class App(customtkinter.CTk):
             # Repeat the same process after every 10 seconds
             self.label_widget.after(5, self.open_camera)
 
-
     def search_event(self, event=None):
         self.map_widget.set_address(self.entry.get())
 
@@ -1165,9 +1197,6 @@ class App(customtkinter.CTk):
 
     def start(self):
         self.mainloop()
-
-
-
 
 
 if __name__ == "__main__":
