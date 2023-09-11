@@ -25,6 +25,7 @@ class MissionControl(pymoos.comms):
         self.nav_yaw = 0 
         self.nav_heading = 0
         self.nav_speed = 0
+        self.nav_depth = 0
         self.last_ais_msg = None
         self.view_seglist = None
         self.view_point = None
@@ -68,11 +69,13 @@ class MissionControl(pymoos.comms):
         """
         Register MOOS variables when connecting to server
         """
+        print("Conectando")
         # Vessel Variables
         self.register('NAV_LAT', 0)
         self.register('NAV_LONG', 0)
         self.register('NAV_HEADING', 0)
         self.register('NAV_SPEED', 0)
+        self.register('NAV_DEPTH', 0)
         self.register('NAV_YAW', 0)
         self.register('MSG_UDP', 0)
 
@@ -106,6 +109,8 @@ class MissionControl(pymoos.comms):
                 self.nav_long = val
             elif msg.name() == 'NAV_HEADING':
                 self.nav_heading = val
+            elif msg.name() == 'NAV_DEPTH':
+                self.nav_depth = val
             elif msg.name() == 'NAV_SPEED':
                 self.nav_speed = val
             elif msg.name() == 'VIEW_SEGLIST':
@@ -125,7 +130,7 @@ class MissionControl(pymoos.comms):
             elif msg.name() == 'IVPHELM_BHV_ACTIVE':
                 val = msg.string()
                 self.ivphelm_bhv_active = val
-                print(ivphelm_bhv_active)
+                print(self.ivphelm_bhv_active)
             elif msg.name() == 'RETURN':
                 val = msg.string()
                 self.return_var = val       

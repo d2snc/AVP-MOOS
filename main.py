@@ -19,11 +19,14 @@ from mission_control import MissionControl
 
 IP_MOOS = "127.0.0.1" # Local
 #IP_MOOS = "100.67.139.83" # Vessel's server
+#IP_MOOS = "192.168.14.138" # Ekren
+#IP_MOOS = "172.18.14.98" # Rasp WIFI
+#IP_MOOS = "100.93.183.81" # Raspberry Pi 4 Tailscale
 PORTA_MOOS = 9000
 
 #LOCATION = "Salvador"
-#LOCATION = "Rio de Janeiro"
-LOCATION = "MIT"
+LOCATION = "Rio de Janeiro"
+#LOCATION = "MIT"
 
 # AIS configuration
 ip_address = '201.76.184.242' 
@@ -40,6 +43,8 @@ Thrust limit for changing gear ###
 The gear will only be changed if thrust < thrust_gear_limit
 """
 thrust_gear_limit = 1
+AUTONOMOUS_SPEED = 2 # meters/s
+DEGREES_SECONDS = False
 
 customtkinter.set_default_color_theme("blue")
 customtkinter.set_appearance_mode("Dark")
@@ -70,6 +75,9 @@ class App(customtkinter.CTk):
         self.sonar_port = 3000
         self.sonar_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sonar_socket.bind((self.sonar_ip, self.sonar_port))
+
+        # Convert Lat Long to minutes and seconds Option
+        self.minutes_seconds = DEGREES_SECONDS
 
         
         # Create mission controller with Moos
@@ -281,7 +289,7 @@ class App(customtkinter.CTk):
         # Variables for plotting the trajectory
         self.pontos_autonomos = []
         self.pontos_sonar = []
-        self.autonomous_speed = 1.0 # meters/s
+        self.autonomous_speed = AUTONOMOUS_SPEED  # meters/s
 
         #Variável auxiliar para ligar AIS da praticagem
         self.check_var = tkinter.StringVar(self,"off")
@@ -656,8 +664,8 @@ class App(customtkinter.CTk):
         
         self.after(1000,self.receive_sonar) #A cada 0,1 segundo ele vai receber posição sonar  
 
-    #TODO Adicionar função que ao clicar em um contato AIS abra um pop-up mostrando informações do navio
-    #TODO Adicionar função no botão da AIS praticagem para remover todos os contatos da tela quando apertar no botão
+    # TODO Adicionar função que ao clicar em um contato AIS abra um pop-up mostrando informações do navio
+    # TODO Adicionar função no botão da AIS praticagem para remover todos os contatos da tela quando apertar no botão
 
     @staticmethod
     def decode_ais_msg(ais_msg):
@@ -711,10 +719,16 @@ class App(customtkinter.CTk):
         """
         Updates the Ship's data in the GUI
         """
-        degrees, minutes, seconds = self.decimal_degrees_to_dms(self.controller.nav_lat)
-        self.label_lat.configure(text=f"Latitude: {degrees}° {minutes}' {seconds:.2f}\"")
-        degrees, minutes, seconds = self.decimal_degrees_to_dms(self.controller.nav_long)
-        self.label_long.configure(text=f"Longitude: {degrees}° {minutes}' {seconds:.2f}\"")
+        if self.minutes_seconds:
+            degrees, minutes, seconds = self.decimal_degrees_to_dms(self.controller.nav_lat)
+            self.label_lat.configure(text=f"Latitude: {degrees}° {minutes}' {seconds:.2f}\"")
+            degrees, minutes, seconds = self.decimal_degrees_to_dms(self.controller.nav_long)
+            self.label_long.configure(text=f"Longitude: {degrees}° {minutes}' {seconds:.2f}\"")
+
+        else:
+            self.label_lat.configure(text=f"Latitude: {self.controller.nav_lat:.6f}")
+            self.label_long.configure(text=f"Longitude: {self.controller.nav_long:.6f}")
+
         self.label_heading.configure(text="Rumo: "+str(int(self.controller.nav_heading))+" °")
         self.label_speed.configure(text="Velocidade: "+str(int(self.controller.nav_speed))+" nós")
         self.label_yaw.configure(text="Ângulo Leme: "+str(round(self.controller.nav_yaw,2)))
@@ -725,6 +739,7 @@ class App(customtkinter.CTk):
         if (self.map_widget.winfo_exists() == 1): #Checa se existe o mapa
             # correção da posição para o mapa
             self.marker_1.set_position(self.controller.nav_lat-0.0001,self.controller.nav_long-0.0001) #Ajustar os valores para ter uma melhor posição do navio
+            
             #self.map_widget.set_position(self.nav_lat,self.nav_long) #Centraliza o mapa no navio, colocar uma opção para ativar ela 
             #self.map_widget.set_zoom(15)
             self.label_widget.configure(text=str(self.controller.nav_lat)+" "+str(self.controller.nav_long))
