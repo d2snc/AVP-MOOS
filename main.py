@@ -6,6 +6,7 @@ import time
 import socket
 import socket
 import pyproj
+import pymoos
 #from auvlib.data_tools import jsf_data, utils
 from tkintermapview import TkinterMapView
 from PIL import Image, ImageTk
@@ -43,8 +44,11 @@ Thrust limit for changing gear ###
 The gear will only be changed if thrust < thrust_gear_limit
 """
 thrust_gear_limit = 1
-AUTONOMOUS_SPEED = 2 # meters/s
-DEGREES_SECONDS = False
+AUTONOMOUS_SPEED = 5 # meters/s
+DEGREES_SECONDS = False # GPS notation in Degrees, Minutes, Seconds if True
+
+CONNECTION_OK_COLOR = "#56a152"
+CONNECTION_NOT_OK_COLOR = "#bf7258"
 
 customtkinter.set_default_color_theme("blue")
 customtkinter.set_appearance_mode("Dark")
@@ -52,8 +56,8 @@ customtkinter.set_appearance_mode("Dark")
 class App(customtkinter.CTk):
 
     APP_NAME = "AVP-MOOS v0.2"
-    WIDTH = 1000
-    HEIGHT = 800
+    WIDTH = 1600
+    HEIGHT = 1000
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -86,6 +90,7 @@ class App(customtkinter.CTk):
         self.__init_main_variables()
         self.__init_GUI()
         self.__main_loop()
+        self.centralize_ship()
 
     def __init_GUI(self):
         """
@@ -119,6 +124,7 @@ class App(customtkinter.CTk):
         self.frame_left.grid_rowconfigure(14, weight=1)
         self.frame_left.grid_rowconfigure(15, weight=1)
         self.frame_left.grid_rowconfigure(16, weight=1)
+        self.frame_left.grid_rowconfigure(17, weight=1)
 
         self.button_1 = customtkinter.CTkButton(master=self.frame_left,
                                                 text="Colocar Marcador",
@@ -180,7 +186,7 @@ class App(customtkinter.CTk):
 
         #Texto da veloc
 
-        self.label_speed = customtkinter.CTkLabel(master=self.frame_left, text="Velocidade: "+str(self.controller.nav_speed)+" nós",)
+        self.label_speed = customtkinter.CTkLabel(master=self.frame_left, text="Velocidade: "+str(self.controller.nav_speed)+"m/s",)
         self.label_speed.configure(font=("Segoe UI", 25))
         self.label_speed.grid(row=11, column=0,  padx=(20,20), pady=(20,20), sticky="")
 
@@ -190,22 +196,32 @@ class App(customtkinter.CTk):
         self.label_yaw.configure(font=("Segoe UI", 20))
         self.label_yaw.grid(row=12, column=0,  padx=(20,20), pady=(20,20), sticky="")
 
+        #Connection Text
+
+        if self.connection_ok:
+            self.label_connection = customtkinter.CTkLabel(master=self.frame_left, text=f"Conexão: {self.connection_ok}",fg_color=(CONNECTION_OK_COLOR))
+        else:
+            self.label_connection = customtkinter.CTkLabel(master=self.frame_left, text=f"Conexão: {self.connection_ok}",fg_color=(CONNECTION_NOT_OK_COLOR))
+        self.label_connection.configure(font=("Segoe UI", 20))
+        self.label_connection.grid(row=13, column=0,  padx=(20,20), pady=(20,20), sticky="")
         
+
+        #MAP
 
         self.map_label = customtkinter.CTkLabel(self.frame_left, text="Servidor de Mapas:", anchor="w")
-        self.map_label.grid(row=13, column=0, padx=(20, 20), pady=(20, 0))
+        self.map_label.grid(row=14, column=0, padx=(20, 20), pady=(20, 0))
         self.map_option_menu = customtkinter.CTkOptionMenu(self.frame_left, values=["OpenStreetMap", "Google normal", "Google satellite"],
                                                                        command=self.change_map)
-        self.map_option_menu.grid(row=14, column=0, padx=(20, 20), pady=(10, 0))
+        self.map_option_menu.grid(row=15, column=0, padx=(20, 20), pady=(10, 0))
 
         self.appearance_mode_label = customtkinter.CTkLabel(self.frame_left, text="Aparência:", anchor="w")
-        self.appearance_mode_label.grid(row=15, column=0, padx=(20, 20), pady=(20, 0))
+        self.appearance_mode_label.grid(row=16, column=0, padx=(20, 20), pady=(20, 0))
         self.appearance_mode_optionemenu = customtkinter.CTkOptionMenu(self.frame_left, values=["Light", "Dark", "System"],
                                                                        command=self.change_appearance_mode)
-        self.appearance_mode_optionemenu.grid(row=16, column=0, padx=(20, 20), pady=(10, 20))
+        self.appearance_mode_optionemenu.grid(row=17, column=0, padx=(20, 20), pady=(10, 20))
 
         
-        # ============ frame_right ============
+        # ============ frame_right ============f
 
         self.frame_right.grid_rowconfigure(1, weight=1)
         self.frame_right.grid_rowconfigure(0, weight=0)
@@ -258,7 +274,7 @@ class App(customtkinter.CTk):
         
         #Botão que liga/desliga AIS da praticagem
         self.checkbox = customtkinter.CTkCheckBox(master=self.frame_left, text="AIS Praticagem", command=self.update_lista_praticagem(),variable=self.check_var, onvalue="on", offvalue="off")
-        self.checkbox.grid(row=17, column=0, padx=(20, 20), pady=(10, 20))
+        self.checkbox.grid(row=18, column=0, padx=(20, 20), pady=(10, 20))
 
         ###Imagem da camera
         self.vid = cv2.VideoCapture('teste.mp4')
@@ -313,6 +329,8 @@ class App(customtkinter.CTk):
         self.return_var = None
         self.bhv_settings = None #Comportamento ativo no momento
         self.ivphelm_bhv_active = None 
+        self.maximum_msg_time = 5 # seconds
+        self.connection_ok = True
 
     def __main_loop(self):
         """
@@ -322,7 +340,25 @@ class App(customtkinter.CTk):
         self.update_gui()
         self.update_ais_contacts()
         #self.update_station_keep()
-        #self.update_lista_praticagem()      
+        #self.update_lista_praticagem()   
+        # 
+        self.check_connection()   
+
+    def check_connection(self):
+        """
+        Checks the last time a messagem was received from MOOS, and if it is greater than the
+        maximum defined time, a display is set to show that there is no connection
+        """
+        try:
+            if pymoos.time() - self.controller.last_msg_time > self.maximum_msg_time:
+                self.connection_ok = False
+            else:
+                self.connection_ok = True
+        except AttributeError:
+            self.connection_ok = False
+        print(f"\nConnection is {self.connection_ok}")
+        self.after(2500,self.check_connection)
+
 
     def activate_sss(self):
         os.popen('python3 funcionando_recebendo_img.py')
@@ -730,8 +766,13 @@ class App(customtkinter.CTk):
             self.label_long.configure(text=f"Longitude: {self.controller.nav_long:.6f}")
 
         self.label_heading.configure(text="Rumo: "+str(int(self.controller.nav_heading))+" °")
-        self.label_speed.configure(text="Velocidade: "+str(int(self.controller.nav_speed))+" nós")
+        self.label_speed.configure(text="Velocidade: "+str(int(self.controller.nav_speed))+" m/s")
         self.label_yaw.configure(text="Ângulo Leme: "+str(round(self.controller.nav_yaw,2)))
+        if self.connection_ok:
+            self.label_connection.configure(text=f"Conexão: {self.connection_ok}",fg_color=(CONNECTION_OK_COLOR))
+        else:
+            self.label_connection.configure(text=f"Conexão: {self.connection_ok}",fg_color=(CONNECTION_NOT_OK_COLOR))
+        #self.label_connection.configure(text=f"Conexão: {self.connection_ok}")
         self.after(1000,self.update_gui)
 
     #Função em loop utilizada para atualizar a posição do meu navio

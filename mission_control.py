@@ -38,7 +38,10 @@ class MissionControl(pymoos.comms):
 
         self.set_on_connect_callback(self.__on_connect)
         self.set_on_mail_callback(self.__on_new_mail)
-        self.run(self.server, self.port, self.name)
+        status = self.run(self.server, self.port, self.name)
+
+        self.init_time = pymoos.time()
+        print(f"Connection status is: {status} at {self.init_time}")
 
     def __set_local_coordinates(self):  
         """
@@ -69,7 +72,6 @@ class MissionControl(pymoos.comms):
         """
         Register MOOS variables when connecting to server
         """
-        print("Conectando")
         # Vessel Variables
         self.register('NAV_LAT', 0)
         self.register('NAV_LONG', 0)
@@ -98,6 +100,8 @@ class MissionControl(pymoos.comms):
         """
         Callback to register incoming messages
         """
+        self.last_msg_time = pymoos.time()
+
         msg_list = self.fetch()
 
         for msg in msg_list:
@@ -134,7 +138,7 @@ class MissionControl(pymoos.comms):
             elif msg.name() == 'RETURN':
                 val = msg.string()
                 self.return_var = val       
-            
+
         return True
     
     def set_navigation_path(self, global_points, desired_speed):
@@ -172,6 +176,7 @@ class MissionControl(pymoos.comms):
         self.notify('END', 'true',pymoos.time())
         self.notify('RETURN', 'true',pymoos.time())
         self.notify('MOOS_MANUAL_OVERIDE', 'true',pymoos.time())
+        self.notify('FEEDBACK_MSG', 'completed',pymoos.time())
 
     def convert_local2global(self,points):
         """
@@ -220,6 +225,13 @@ class MissionControl(pymoos.comms):
         self.notify_thruster(0)
         self.notify_rudder(0)
         self.notify_gear(0)
+
+    def set_desired_speed(self,desired_speed):
+        """
+        Set the desired_speed for the controller 
+        <desired_speed> in meters/s
+        """
+        self.notify('DESIRED_SPEED', desired_speed, pymoos.time())
 
 def main():
     controller = MissionControl(IP_MOOS, PORTA_MOOS, LOCATION)
