@@ -46,6 +46,7 @@ The gear will only be changed if thrust < thrust_gear_limit
 """
 thrust_gear_limit = 1
 AUTONOMOUS_SPEED = 5 # meters/s
+MAX_AUTONOMOUS_SPEED = 20 # meters/s
 DEGREES_SECONDS = False # GPS notation in Degrees, Minutes, Seconds if True
 
 CONNECTION_OK_COLOR = "#56a152"
@@ -309,6 +310,7 @@ class App(customtkinter.CTk):
         self.autonomous_points = []
         self.pontos_sonar = []
         self.autonomous_speed = AUTONOMOUS_SPEED  # meters/s
+        self.max_autonomous_speed = MAX_AUTONOMOUS_SPEED
         self.visited_points = []
 
         #Variável auxiliar para ligar AIS da praticagem
@@ -336,6 +338,7 @@ class App(customtkinter.CTk):
         self.maximum_msg_time = 3 # seconds
         self.connection_ok = True
         self.trajectory_plot_is_toggled = False
+        self.autonomous_control = False
 
     def __main_loop(self):
         """
@@ -364,7 +367,6 @@ class App(customtkinter.CTk):
         print(f"\nConnection is {self.connection_ok}")
         self.after(1000,self.check_connection)
 
-    #TODO 
     def trajectory_plot(self):
         """
         Plots the previous trajectory of the vessel
@@ -377,7 +379,6 @@ class App(customtkinter.CTk):
             else:
                 self.trajectory_button.configure(text="Remove Trajetória")
                 self.trajectory_plot_is_toggled = True
-                print(self.visited_points)
                 self.path_trajectory = self.map_widget.set_path(self.visited_points, color='yellow',width=0.5)
 
     def centralize_ship(self):
@@ -566,6 +567,9 @@ class App(customtkinter.CTk):
         """
         Destroys the GUI for the autonomous navigation
         """
+
+        self.autonomous_control = False
+
         #Deleto toda a derrota do mapa
         self.map_widget.delete_all_path()
 
@@ -581,7 +585,14 @@ class App(customtkinter.CTk):
         self.controller.stop_autonomous_navigation()
 
     def create_menu_autonomous(self):
+        """
+        Create the GUI Menu for setting the desired autonomous trajectory and speed
+        If the desired speed changes the Init button must be hit again
+        """
         #Altero o texto do botão
+
+        self.autonomous_control = True
+
         self.button_controle_autonomo.configure(command=self.destroy_autonomous,text="Desativar Controle Autônomo")
 
         #Crio o frame com o controle autônomo
@@ -589,7 +600,7 @@ class App(customtkinter.CTk):
         self.slider_progressbar_frame1 = customtkinter.CTkFrame(self, fg_color="transparent",width=400,height=200)
         self.slider_progressbar_frame1.grid(row=0, column=5, padx=(20, 0), pady=(90, 0), sticky="nsew") #Mexer no pady se quiser abaixar mais o frame
         self.slider_progressbar_frame1.grid_columnconfigure(0, weight=1)
-        self.slider_progressbar_frame1.grid_rowconfigure(3, weight=1)
+        self.slider_progressbar_frame1.grid_rowconfigure(6, weight=1)
         
         #Label do Controle Autônomo
         self.label_machine1 = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text="Controle Autônomo")
@@ -616,6 +627,31 @@ class App(customtkinter.CTk):
                                                 text="Remover Último Ponto",
                                                 command=self.clean_last_autonomous)
         self.button_remove_ultimo.grid(pady=(15, 5), padx=(35, 60), row=2, column=1)
+
+        # Set desired speed for autonomous controller
+
+        self.label_desired_speed = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text=f"Desired Speed: {float(self.autonomous_speed)}m/s")
+        self.label_desired_speed.configure(font=("Segoe UI", 20))
+        self.label_desired_speed.grid(row=3, column=0, columnspan=2, padx=0, pady=(15,15), sticky="")
+        
+        self.slider_speed = customtkinter.CTkSlider(self.slider_progressbar_frame1, from_=0, to=self.max_autonomous_speed, number_of_steps=self.max_autonomous_speed)
+        self.slider_speed.grid(row=4, column=0, columnspan=2, padx=(50, 50), pady=(15, 15), sticky="ew")
+        self.slider_speed.configure(command=self.update_desired_speed)
+        self.slider_speed.set(self.autonomous_speed)
+
+        self.speed_progressbar = customtkinter.CTkProgressBar(master=self.slider_progressbar_frame1,width=300)
+        self.speed_progressbar.grid(row=5, column=0, columnspan=2, padx=(50, 50), pady=(15, 15), sticky="ew")
+        self.speed_progressbar.set(self.controller.nav_speed/self.max_autonomous_speed)
+
+    def update_desired_speed(self,_):
+        """
+        Updates GUI of desired speed in the autonomous menu and notifies the controller
+        of the new desired speed for the autonomous path
+        """
+        desired_speed = self.slider_speed.get()
+        self.autonomous_speed = desired_speed
+        self.controller.set_desired_speed(desired_speed)
+        self.label_desired_speed.configure(text=f"Desired Speed: {self.autonomous_speed}m/s")
 
     def activate_autonomous(self): 
         """
@@ -799,6 +835,13 @@ class App(customtkinter.CTk):
             self.label_connection.configure(text=f"Conexão: {self.connection_ok}",fg_color=(CONNECTION_OK_COLOR))
         else:
             self.label_connection.configure(text=f"Conexão: {self.connection_ok}",fg_color=(CONNECTION_NOT_OK_COLOR))
+
+        if self.manual_control:
+            rudder_progress_value = ((self.controller.nav_yaw + 40)*1.25)/100
+            self.rudder_progressbar.set(rudder_progress_value)
+
+        if self.autonomous_control:
+            self.speed_progressbar.set(self.controller.nav_speed/self.max_autonomous_speed)
         #self.label_connection.configure(text=f"Conexão: {self.connection_ok}")
         self.after(1000,self.update_gui)
 
@@ -920,7 +963,6 @@ class App(customtkinter.CTk):
         self.label_rudder.configure(font=("Segoe UI", 20))
         self.label_rudder.grid(row=3, column=0, columnspan=1, padx=(10,0), pady=(10,20), sticky="")
 
-        #self.rudder_progressbar = customtkinter.CTkProgressBar(master=self.slider_progressbar_frame,from_=-40, to=40, number_of_steps=80)
         self.rudder_progressbar = customtkinter.CTkProgressBar(master=self.slider_progressbar_frame,width=300)
         self.rudder_progressbar.grid(row=5, column=0, padx=(20, 10), pady=(0, 0),sticky="nsew")
         
@@ -1090,7 +1132,7 @@ class App(customtkinter.CTk):
                 print("DESIRED_GEAR: ", value_gear)
 
     ###################################################
-    ### End of the functions for the remote control ###
+    ### End of the functions for the Remote Control ###
     ###################################################
 
     def destroy_maps(self):
