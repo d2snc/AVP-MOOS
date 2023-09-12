@@ -7,6 +7,7 @@ import socket
 import socket
 import pyproj
 import pymoos
+from geopy.distance import geodesic as GD
 #from auvlib.data_tools import jsf_data, utils
 from tkintermapview import TkinterMapView
 from PIL import Image, ImageTk
@@ -156,10 +157,10 @@ class App(customtkinter.CTk):
                                                 command=self.update_autonomous)
         self.button_controle_autonomo.grid(pady=(20, 0), padx=(20, 20), row=5, column=0)
 
-        self.sss_button = customtkinter.CTkButton(master=self.frame_left,
-                                                text="SSS",
-                                                command=self.activate_sss)
-        self.sss_button.grid(pady=(20, 0), padx=(20, 20), row=6, column=0)
+        self.trajectory_button = customtkinter.CTkButton(master=self.frame_left,
+                                                text="Plot Trajetória",
+                                                command=self.trajectory_plot)
+        self.trajectory_button.grid(pady=(20, 0), padx=(20, 20), row=6, column=0)
 
         self.plot_sonar_button = customtkinter.CTkButton(master=self.frame_left,
                                                 text="Sonar Plot",
@@ -278,13 +279,15 @@ class App(customtkinter.CTk):
 
         ###Imagem da camera
         self.vid = cv2.VideoCapture('teste.mp4')
-        #rtsp_url = 'rtsp://172.18.14.214/axis-media/media.amp' #Para usar na lancha
-        #self.vid = cv2.VideoCapture(rtsp_url)
-        self.camera_width , self.camera_height = 800,600
+        """
+            rtsp_url = 'rtsp://172.18.14.214/axis-media/media.amp' #Para usar na lancha
+            self.vid = cv2.VideoCapture(rtsp_url)
+            self.camera_width , self.camera_height = 800,600
 
-        # Set the width and height
-        self.vid.set(cv2.CAP_PROP_FRAME_WIDTH, self.camera_width)
-        self.vid.set(cv2.CAP_PROP_FRAME_HEIGHT, self.camera_height)
+            # Set the width and height
+            self.vid.set(cv2.CAP_PROP_FRAME_WIDTH, self.camera_width)
+            self.vid.set(cv2.CAP_PROP_FRAME_HEIGHT, self.camera_height)
+        """
 
         # Create a label and display it on app
         self.text_var = tkinter.StringVar(value="")
@@ -303,9 +306,10 @@ class App(customtkinter.CTk):
 
     def __init_main_variables(self):
         # Variables for plotting the trajectory
-        self.pontos_autonomos = []
+        self.autonomous_points = []
         self.pontos_sonar = []
         self.autonomous_speed = AUTONOMOUS_SPEED  # meters/s
+        self.visited_points = []
 
         #Variável auxiliar para ligar AIS da praticagem
         self.check_var = tkinter.StringVar(self,"off")
@@ -329,8 +333,9 @@ class App(customtkinter.CTk):
         self.return_var = None
         self.bhv_settings = None #Comportamento ativo no momento
         self.ivphelm_bhv_active = None 
-        self.maximum_msg_time = 5 # seconds
+        self.maximum_msg_time = 3 # seconds
         self.connection_ok = True
+        self.trajectory_plot_is_toggled = False
 
     def __main_loop(self):
         """
@@ -357,11 +362,23 @@ class App(customtkinter.CTk):
         except AttributeError:
             self.connection_ok = False
         print(f"\nConnection is {self.connection_ok}")
-        self.after(2500,self.check_connection)
+        self.after(1000,self.check_connection)
 
-
-    def activate_sss(self):
-        os.popen('python3 funcionando_recebendo_img.py')
+    #TODO 
+    def trajectory_plot(self):
+        """
+        Plots the previous trajectory of the vessel
+        """
+        if len(self.visited_points) > 1:
+            if self.trajectory_plot_is_toggled:
+                self.trajectory_button.configure(text="Plot Trajetória")
+                self.trajectory_plot_is_toggled = False
+                self.path_trajectory.delete()
+            else:
+                self.trajectory_button.configure(text="Remove Trajetória")
+                self.trajectory_plot_is_toggled = True
+                print(self.visited_points)
+                self.path_trajectory = self.map_widget.set_path(self.visited_points, color='yellow',width=0.5)
 
     def centralize_ship(self):
         """
@@ -442,20 +459,22 @@ class App(customtkinter.CTk):
             for match in points:
                 match = match.split(",")
                 #Conversão de coordenadas locais para globais
-                inv_longitude, inv_latitude = pyproj.transform(self.projection_local, self.projection_global, float(match[0])-self.diff_x, float(match[1])-self.diff_y)
+                #inv_longitude, inv_latitude = pyproj.transform(self.projection_local, self.projection_global, float(match[0])-self.diff_x, float(match[1])-self.diff_y)
+                inv_longitude, inv_latitude = pyproj.transform(self.projection_local, self.projection_global, float(match[0]), float(match[1]))
                 print(inv_latitude, inv_longitude)
                 #Adiciono os pontos na lista
-                self.pontos_autonomos.append((inv_latitude, inv_longitude))
+                self.autonomous_points.append((inv_latitude, inv_longitude))
 
             # Pontos para debug
-            print(self.pontos_autonomos)
+            print(f"Autonomous Points: {self.autonomous_points}")
 
             #Defino o caminho
-            self.path_1 = self.map_widget.set_path(self.pontos_autonomos)
+            #self.path_autonomous = self.map_widget.set_path(self.autonomous_points)
+            self.path_autonomous.set_position_list(self.autonomous_points)
 
             #Definindo pontos da derrota como markers
-            for ponto in self.pontos_autonomos:
-                self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1], text="#"+str(self.pontos_autonomos.index(ponto)+1)+" Ponto de derrota autônoma"))
+            for ponto in self.autonomous_points:
+                self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1], text="#"+str(self.autonomous_points.index(ponto)+1)+" Ponto de derrota autônoma"))
 
             
         
@@ -496,7 +515,7 @@ class App(customtkinter.CTk):
         self.map_widget.delete_all_path()
         
         #Limpo a lista self.pontos_autonomos
-        self.pontos_autonomos = []
+        self.autonomous_points = []
         
         #Pega os pontos da variável e cria a nova derrota
         if self.view_seglist is not None: #Checa se a lista não está vazia
@@ -514,14 +533,14 @@ class App(customtkinter.CTk):
                 inv_longitude, inv_latitude = pyproj.transform(self.projection_local, self.projection_global, float(match[0])-self.diff_x, float(match[1])-self.diff_y)
 
                 #Adiciono os pontos na lista
-                self.pontos_autonomos.append((inv_latitude, inv_longitude))
+                self.autonomous_points.append((inv_latitude, inv_longitude))
                 
             #Defino o caminho
-            self.path_1 = self.map_widget.set_path(self.pontos_autonomos)
+            self.path_autonomous = self.map_widget.set_path(self.autonomous_points)
 
             #Definindo pontos da derrota como markers
-            for ponto in self.pontos_autonomos:
-                self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1], text="#"+str(self.pontos_autonomos.index(ponto)+1)+" Ponto de derrota autônoma"))
+            for ponto in self.autonomous_points:
+                self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1], text="#"+str(self.autonomous_points.index(ponto)+1)+" Ponto de derrota autônoma"))
 
     def add_autonomous_point(self,coords):
         """
@@ -529,16 +548,19 @@ class App(customtkinter.CTk):
         """
         print("Adicionar ponto de derrota:", coords)
         #Adiciona ponto na lista de pontos
-        self.pontos_autonomos.append(coords)
+        self.autonomous_points.append(coords)
         #Defino o caminho
-        if len(self.pontos_autonomos) > 1: #Para não criar o caminho c/ 1 ponto só
-            self.path_1 = self.map_widget.set_path(self.pontos_autonomos)
+        if len(self.autonomous_points) > 1: #Para não criar o caminho c/ 1 ponto só
+            try:
+                self.path_autonomous.set_position_list(self.autonomous_points)
+            except AttributeError:
+                self.path_autonomous = self.map_widget.set_path(self.autonomous_points)
 
         #Definindo pontos da derrota como markers
         #Só adiciona pontos que não estão na lista
-        for ponto in self.pontos_autonomos:
+        for ponto in self.autonomous_points:
             if ponto not in self.marker_autonomous_list:
-                self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1], text="#"+str(self.pontos_autonomos.index(ponto)+1)+" Ponto de derrota autônoma"))
+                self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1], text="#"+str(self.autonomous_points.index(ponto)+1)+" Ponto de derrota autônoma"))
 
     def destroy_autonomous(self):
         """
@@ -546,6 +568,7 @@ class App(customtkinter.CTk):
         """
         #Deleto toda a derrota do mapa
         self.map_widget.delete_all_path()
+
         #Deleto os pontos do mapa
         for marker in self.marker_autonomous_list:
             marker.delete()
@@ -598,7 +621,7 @@ class App(customtkinter.CTk):
         """
         Starts autonomous navigation and notifies MOOS
         """
-        self.controller.set_navigation_path(self.pontos_autonomos, self.autonomous_speed)
+        self.controller.set_navigation_path(self.autonomous_points, self.autonomous_speed)
         self.update_active_autonomous_point()
 
     def stop_autonomous(self):
@@ -613,34 +636,38 @@ class App(customtkinter.CTk):
         Clean last added autonomous path point
         """
         
+        # Delete all path
+        #self.map_widget.delete_all_path()
+        self.path_autonomous.delete()
+
         # Delete markers
         for marker in self.marker_autonomous_list:
             marker.delete()
-        self.pontos_autonomos.pop() # Remove last point from the list
+        self.autonomous_points.pop() # Remove last point from the list
         self.marker_autonomous_list.pop() # Remove icon from list
         
-        # Delete all path
-        self.map_widget.delete_all_path()
-        
         # Set path
-        self.path_1 = self.map_widget.set_path(self.pontos_autonomos)
+        #self.path_autonomous = self.map_widget.set_path(self.pontos_autonomos)
+        self.path_autonomous.set_position_list(self.autonomous_points)
         
-        for ponto in self.pontos_autonomos:
-            self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1], text="#"+str(self.pontos_autonomos.index(ponto)+1)+" Ponto de derrota autônoma"))
+        for ponto in self.autonomous_points:
+            self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1], text="#"+str(self.autonomous_points.index(ponto)+1)+" Ponto de derrota autônoma"))
     
     def clean_autonomous(self):
         """
         Clean the current Autonomous Path from the map
         """
+
         # Delete created path
-        self.map_widget.delete_all_path()
+        #self.map_widget.delete_all_path()
+        self.path_autonomous.delete()
 
         # Remove points from the list
         for marker in self.marker_autonomous_list:
             marker.delete()
 
         # Clean list
-        self.pontos_autonomos = []
+        self.autonomous_points = []
 
     ###################################################
     ### End of Functions for the Autonomous Control ###
@@ -695,7 +722,7 @@ class App(customtkinter.CTk):
         """
         self.pontos_sonar.append((self.controller.nav_lat-0.0001,self.controller.nav_long-0.0001))
         if (len(self.pontos_sonar) > 1):
-            self.path_2 = self.map_widget.set_path(self.pontos_sonar)
+            self.path_trajectory = self.map_widget.set_path(self.pontos_sonar)
                 
         
         self.after(1000,self.receive_sonar) #A cada 0,1 segundo ele vai receber posição sonar  
@@ -775,12 +802,36 @@ class App(customtkinter.CTk):
         #self.label_connection.configure(text=f"Conexão: {self.connection_ok}")
         self.after(1000,self.update_gui)
 
+    def add_visited_point(self):
+        """
+        Update the ship's visited points if the distance between the current and last point
+        is greater than a threshold
+        """
+        points = (self.controller.nav_lat,self.controller.nav_long)
+        if len(self.visited_points) > 0:
+            dist = GD(points,tuple(self.last_loc_global)).km 
+            if dist > 0.05: # 50 meters
+                #xy = self.controller.convert_global2local((self.controller.nav_lat,self.controller.nav_long))[0]
+                self.visited_points.append(points)
+                self.last_loc_global = points
+                if self.trajectory_plot_is_toggled:
+                    self.path_trajectory.set_position_list(self.visited_points)
+
+                #self.marker_trajectory_list.append(self.map_widget.set_marker(xy[0], xy[1], text="#"+str(self.visited_points.index(xy)+1)+"Local visitado"))
+        else:
+            #xy = self.controller.convert_global2local([self.controller.nav_lat,self.controller.nav_long])[0]
+            self.visited_points.append(points)
+            self.last_loc_global = points
+
+            #self.marker_trajectory_list.append(self.map_widget.set_marker(xy[0], xy[1], text="#"+str(self.visited_points.index(xy)+1)+"Local visitado"))       
+
     #Função em loop utilizada para atualizar a posição do meu navio
     def update_ship_position(self):
-        if (self.map_widget.winfo_exists() == 1): #Checa se existe o mapa
+        if (self.map_widget.winfo_exists() == 1): #Checa se existe o mapa 
             # correção da posição para o mapa
-            self.marker_1.set_position(self.controller.nav_lat-0.0001,self.controller.nav_long-0.0001) #Ajustar os valores para ter uma melhor posição do navio
-            
+            #self.marker_1.set_position(self.controller.nav_lat-0.0001,self.controller.nav_long-0.0001) #Ajustar os valores para ter uma melhor posição do navio
+            self.marker_1.set_position(self.controller.nav_lat,self.controller.nav_long)
+
             #self.map_widget.set_position(self.nav_lat,self.nav_long) #Centraliza o mapa no navio, colocar uma opção para ativar ela 
             #self.map_widget.set_zoom(15)
             self.label_widget.configure(text=str(self.controller.nav_lat)+" "+str(self.controller.nav_long))
@@ -789,6 +840,9 @@ class App(customtkinter.CTk):
             self.ship_imagefile = Image.open(os.path.join(self.current_path, "images", "ship_red"+str(int(self.controller.nav_heading))+".png"))
             ship_image = ImageTk.PhotoImage(self.ship_imagefile)
             self.marker_1.change_icon(ship_image)
+
+            self.add_visited_point()
+
         else:
             print("Mapa inativo")
 
@@ -866,6 +920,7 @@ class App(customtkinter.CTk):
         self.label_rudder.configure(font=("Segoe UI", 20))
         self.label_rudder.grid(row=3, column=0, columnspan=1, padx=(10,0), pady=(10,20), sticky="")
 
+        #self.rudder_progressbar = customtkinter.CTkProgressBar(master=self.slider_progressbar_frame,from_=-40, to=40, number_of_steps=80)
         self.rudder_progressbar = customtkinter.CTkProgressBar(master=self.slider_progressbar_frame,width=300)
         self.rudder_progressbar.grid(row=5, column=0, padx=(20, 10), pady=(0, 0),sticky="nsew")
         
@@ -891,6 +946,7 @@ class App(customtkinter.CTk):
         # Configurando a barra de progresso
         self.slider_rudder.configure(command=self.update_value_rudder) #Configurei o slider para setar a barra de progresso
         self.thrust_progressbar.set(self.thrust_slider.get())
+        self.rudder_progressbar.set((self.controller.nav_yaw+40)*1.25)
         self.thrust_slider.configure(command=self.update_value_thrust)
         self.gear_slider.configure(command=self.update_value_gear)
 
@@ -997,6 +1053,7 @@ class App(customtkinter.CTk):
         """
         value_thrust = int(self.thrust_slider.get()*100)
         self.thrust_progressbar.set(self.thrust_slider.get())
+        print(self.thrust_slider.get())
         self.label_machine.configure(text=str(value_thrust)+"%")
 
         if self.manual_control is True:
@@ -1008,7 +1065,8 @@ class App(customtkinter.CTk):
         Sends to Moos the desired rudder value and updates the GUI
         """
         value_rudder = int(self.slider_rudder.get())
-        self.rudder_progressbar.set(self.slider_rudder.get())
+        rudder_progress_value = ((self.controller.nav_yaw + 40)*1.25)/100
+        self.rudder_progressbar.set(rudder_progress_value)
         self.label_rudder_value.configure(text=str(value_rudder)+"°")
 
         if self.manual_control is True:
