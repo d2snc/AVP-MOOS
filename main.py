@@ -51,8 +51,8 @@ Thrust limit for changing gear ###
 The gear will only be changed if thrust < thrust_gear_limit
 """
 thrust_gear_limit = 1
-AUTONOMOUS_SPEED = 5 # meters/s
-MAX_AUTONOMOUS_SPEED = 20 # meters/s
+AUTONOMOUS_SPEED = 5 # knots
+MAX_AUTONOMOUS_SPEED = 20 # knots
 DEGREES_SECONDS = False # GPS notation in Degrees, Minutes, Seconds if True
 
 CONNECTION_OK_COLOR = "#56a152"
@@ -194,7 +194,7 @@ class App(customtkinter.CTk):
 
         #Texto da veloc
 
-        self.label_speed = customtkinter.CTkLabel(master=self.frame_left, text="Velocidade: "+str(self.controller.nav_speed)+"m/s",)
+        self.label_speed = customtkinter.CTkLabel(master=self.frame_left, text="Velocidade: "+str(self.controller.nav_speed)+"knots",)
         self.label_speed.configure(font=("Segoe UI", 25))
         self.label_speed.grid(row=11, column=0,  padx=(20,20), pady=(20,20), sticky="")
 
@@ -639,7 +639,7 @@ class App(customtkinter.CTk):
 
         # Set desired speed for autonomous controller
 
-        self.label_desired_speed = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text=f"Desired Speed: {float(self.autonomous_speed)}m/s")
+        self.label_desired_speed = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text=f"Desired Speed: {float(self.autonomous_speed)}knots")
         self.label_desired_speed.configure(font=("Segoe UI", 20))
         self.label_desired_speed.grid(row=3, column=0, columnspan=2, padx=0, pady=(15,15), sticky="")
         
@@ -662,7 +662,8 @@ class App(customtkinter.CTk):
         # Creates a listbox for selecting multiple variables to plot
         self.listbox_selection = ('RUDDER PLOT',
                                   'HEADING PLOT',
-                                  'SPEED PLOT')
+                                  'SPEED PLOT',
+                                  'DEPTH PLOT')
 
         var = tkinter.Variable(value=self.listbox_selection)
         # selecmode can be MULTIPLE, SINGLE
@@ -725,8 +726,8 @@ class App(customtkinter.CTk):
             plt.cla()
             plt.plot(heading_x_data, heading_y_nav_data,label="NAV_HEADING")
             plt.plot(heading_x_data, heading_y_des_data,label="DESIRED_HEADING")
-            plt.xlabel('Time')
-            plt.ylabel('Value')
+            plt.xlabel('Time [s]')
+            plt.ylabel('Value [°]')
             plt.ylim([-365,365])
             plt.legend()
             plt.grid(alpha=ALPHA,linewidth=LINEWIDTH)
@@ -743,8 +744,8 @@ class App(customtkinter.CTk):
             plt.cla()
             plt.plot(rudder_x_data, rudder_y_nav_data,label="NAV_RUDDER")
             plt.plot(rudder_x_data, rudder_y_des_data,label="DESIRED_RUDDER")
-            plt.xlabel('Time')
-            plt.ylabel('Value')
+            plt.xlabel('Time [s]')
+            plt.ylabel('Value [°]')
             plt.ylim([-45,45])
             plt.legend()
             plt.grid(alpha=ALPHA,linewidth=LINEWIDTH)
@@ -761,12 +762,26 @@ class App(customtkinter.CTk):
             plt.cla()
             plt.plot(speed_x_data, speed_y_nav_data,label="NAV_SPEED")
             plt.plot(speed_x_data, speed_y_des_data,label="DESIRED_SPEED")
-            plt.xlabel('Time')
-            plt.ylabel('Value')
+            plt.xlabel('Time [s]')
+            plt.ylabel('Value [knots]')
             plt.ylim([0,15])
             plt.legend()
             plt.grid(alpha=ALPHA,linewidth=LINEWIDTH)
             plt.title('Real-time Speed Plot')
+
+        def animate_depth(i):
+            x = time.time() - depth_init_time
+            nav = self.controller.nav_depth
+
+            depth_x_data.append(x)
+            depth_y_nav_data.append(nav)
+            plt.cla()
+            plt.plot(depth_x_data, depth_y_nav_data,label="NAV_DEPTH")
+            plt.xlabel('Time [s]')
+            plt.ylabel('Value [m]')
+            plt.legend()
+            plt.grid(alpha=ALPHA,linewidth=LINEWIDTH)
+            plt.title('Real-time Depth Plot')
 
         if plot_type == "RUDDER PLOT":
             print("\nMaking RUDDER PLOT\n")
@@ -801,6 +816,16 @@ class App(customtkinter.CTk):
             self.active_animations.append(self.heading_plot_animation)
             plt.show()
 
+        elif plot_type == "DEPTH PLOT":
+            print("\nMaking DEPTH PLOT\n")
+            depth_x_data = deque(maxlen=MAXLEN)
+            depth_y_nav_data = deque(maxlen=MAXLEN)
+            depth_fig, ax = plt.subplots()
+            depth_init_time = time.time()
+            self.depth_plot_animation = FuncAnimation(depth_fig, animate_depth, interval=500)
+            self.active_animations.append(self.depth_plot_animation)
+            plt.show()
+
     def update_desired_speed(self,_):
         """
         Updates GUI of desired speed in the autonomous menu and notifies the controller
@@ -809,7 +834,7 @@ class App(customtkinter.CTk):
         desired_speed = self.slider_speed.get()
         self.autonomous_speed = desired_speed
         self.controller.set_desired_speed(desired_speed)
-        self.label_desired_speed.configure(text=f"Desired Speed: {self.autonomous_speed}m/s")
+        self.label_desired_speed.configure(text=f"Desired Speed: {self.autonomous_speed}knots")
 
     def activate_autonomous(self): 
         """
@@ -987,7 +1012,7 @@ class App(customtkinter.CTk):
             self.label_long.configure(text=f"Longitude: {self.controller.nav_long:.6f}")
 
         self.label_heading.configure(text="Rumo: "+str(int(self.controller.nav_heading))+" °")
-        self.label_speed.configure(text="Velocidade: "+str(int(self.controller.nav_speed))+" m/s")
+        self.label_speed.configure(text="Velocidade: "+str(int(self.controller.nav_speed))+" knots")
         self.label_yaw.configure(text="Ângulo Leme: "+str(round(self.controller.nav_yaw,2)))
         if self.connection_ok:
             self.label_connection.configure(text=f"Conexão: {self.connection_ok}",fg_color=(CONNECTION_OK_COLOR))
