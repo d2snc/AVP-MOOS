@@ -7,15 +7,21 @@ import socket
 import socket
 import pyproj
 import pymoos
+from collections import deque
 from geopy.distance import geodesic as GD
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
 #from auvlib.data_tools import jsf_data, utils
 from tkintermapview import TkinterMapView
 from PIL import Image, ImageTk
 from pyais import decode
 from PIL import ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
-from tkinter import ttk, simpledialog
 from mission_control import MissionControl
+
+#mpl.style.use('seaborn')
+plt.style.use('dark_background')
 
 # Configurations to access Moos server
 
@@ -339,6 +345,9 @@ class App(customtkinter.CTk):
         self.connection_ok = True
         self.trajectory_plot_is_toggled = False
         self.autonomous_control = False
+        self.make_variables_plot = False
+        self.active_animations = []
+        self.selected_plot_variables = []
 
     def __main_loop(self):
         """
@@ -600,7 +609,7 @@ class App(customtkinter.CTk):
         self.slider_progressbar_frame1 = customtkinter.CTkFrame(self, fg_color="transparent",width=400,height=200)
         self.slider_progressbar_frame1.grid(row=0, column=5, padx=(20, 0), pady=(90, 0), sticky="nsew") #Mexer no pady se quiser abaixar mais o frame
         self.slider_progressbar_frame1.grid_columnconfigure(0, weight=1)
-        self.slider_progressbar_frame1.grid_rowconfigure(6, weight=1)
+        self.slider_progressbar_frame1.grid_rowconfigure(7, weight=1)
         
         #Label do Controle Autônomo
         self.label_machine1 = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text="Controle Autônomo")
@@ -642,6 +651,155 @@ class App(customtkinter.CTk):
         self.speed_progressbar = customtkinter.CTkProgressBar(master=self.slider_progressbar_frame1,width=300)
         self.speed_progressbar.grid(row=5, column=0, columnspan=2, padx=(50, 50), pady=(15, 15), sticky="ew")
         self.speed_progressbar.set(self.controller.nav_speed/self.max_autonomous_speed)
+
+        # Set option for Plotting Variables
+
+        self.button_plot_variables = customtkinter.CTkButton(master=self.slider_progressbar_frame1,
+                                                text="Plot Variables",
+                                                command=self.toggle_plot_variables)
+        self.button_plot_variables.grid(pady=(5, 5), padx=(5, 5), row=6, column=0)        
+
+        # Creates a listbox for selecting multiple variables to plot
+        self.listbox_selection = ('RUDDER PLOT',
+                                  'HEADING PLOT',
+                                  'SPEED PLOT')
+
+        var = tkinter.Variable(value=self.listbox_selection)
+        # selecmode can be MULTIPLE, SINGLE
+        self.select_list = tkinter.Listbox(master=self.slider_progressbar_frame1,
+                                           listvariable=var,
+                                           height=len(self.listbox_selection),
+                                           selectmode=tkinter.SINGLE)
+        self.select_list.configure(background="#265aad",foreground="white",font=("Segoe UI", 10))
+        self.select_list.grid(pady=(5, 5), padx=(5, 5), row=6, column=1)
+
+        # Binds the variables chosen to an action 
+        self.select_list.bind('<<ListboxSelect>>', self.items_selected) 
+
+    def toggle_plot_variables(self):
+        """
+        Check if USER asked to plot variables
+        """
+        if self.make_variables_plot: # End plot
+            self.button_plot_variables.configure(text=f"Plot Variables")
+            self.make_variables_plot = False
+            for animation in self.active_animations:
+                animation.pause()
+                plt.close()
+                self.active_animations = []
+        else: # Start plot
+            if len(self.selected_plot_variables) > 0:
+                self.make_variables_plot = True
+                self.button_plot_variables.configure(text=f"Close Plot Variables")
+                if len(self.active_animations) > 0:
+                    for animation in self.active_animations:
+                        animation.resume()
+                else:
+                    for plot_type in self.selected_plot_variables:
+                        self.plot_variables(plot_type=plot_type)
+
+    def items_selected(self, event):
+        """
+        Updates the selected variables to plot from the list
+        """
+        selected_indices = self.select_list.curselection()
+        self.selected_plot_variables = [self.listbox_selection[i] for i in selected_indices]
+        print(self.selected_plot_variables)
+
+    def plot_variables(self, plot_type):
+        """
+        Plot Two Variables: var_des, intended for desired control variables
+                            var_nav, the real value for the vessel
+        """    # Clear the previous plot and plot the updated data
+        MAXLEN = 100
+        ALPHA = 0.1
+        LINEWIDTH = 1
+        def animate_heading(i):
+            x = time.time() - heading_init_time
+            nav = self.controller.nav_heading
+            des = self.controller.desired_heading
+
+            heading_x_data.append(x)
+            heading_y_des_data.append(des)
+            heading_y_nav_data.append(nav)
+            plt.cla()
+            plt.plot(heading_x_data, heading_y_nav_data,label="NAV_HEADING")
+            plt.plot(heading_x_data, heading_y_des_data,label="DESIRED_HEADING")
+            plt.xlabel('Time')
+            plt.ylabel('Value')
+            plt.ylim([-365,365])
+            plt.legend()
+            plt.grid(alpha=ALPHA,linewidth=LINEWIDTH)
+            plt.title('Real-time Heading Plot')
+
+        def animate_rudder(i):
+            x = time.time() - rudder_init_time
+            nav = self.controller.nav_yaw
+            des = self.controller.desired_rudder
+
+            rudder_x_data.append(x)
+            rudder_y_des_data.append(des)
+            rudder_y_nav_data.append(nav)
+            plt.cla()
+            plt.plot(rudder_x_data, rudder_y_nav_data,label="NAV_RUDDER")
+            plt.plot(rudder_x_data, rudder_y_des_data,label="DESIRED_RUDDER")
+            plt.xlabel('Time')
+            plt.ylabel('Value')
+            plt.ylim([-45,45])
+            plt.legend()
+            plt.grid(alpha=ALPHA,linewidth=LINEWIDTH)
+            plt.title('Real-time Rudder Plot')
+
+        def animate_speed(i):
+            x = time.time() - speed_init_time
+            nav = self.controller.nav_speed
+            des = self.controller.desired_speed
+
+            speed_x_data.append(x)
+            speed_y_des_data.append(des)
+            speed_y_nav_data.append(nav)
+            plt.cla()
+            plt.plot(speed_x_data, speed_y_nav_data,label="NAV_SPEED")
+            plt.plot(speed_x_data, speed_y_des_data,label="DESIRED_SPEED")
+            plt.xlabel('Time')
+            plt.ylabel('Value')
+            plt.ylim([0,15])
+            plt.legend()
+            plt.grid(alpha=ALPHA,linewidth=LINEWIDTH)
+            plt.title('Real-time Speed Plot')
+
+        if plot_type == "RUDDER PLOT":
+            print("\nMaking RUDDER PLOT\n")
+            rudder_x_data = deque(maxlen=MAXLEN)
+            rudder_y_des_data = deque(maxlen=MAXLEN)
+            rudder_y_nav_data = deque(maxlen=MAXLEN)
+            rudder_fig, ax = plt.subplots()
+            rudder_init_time = time.time()
+            self.rudder_plot_animation = FuncAnimation(rudder_fig, animate_rudder, interval=500)
+            self.active_animations.append(self.rudder_plot_animation)
+            plt.show()
+
+        elif plot_type == "SPEED PLOT":
+            print("\nMaking SPEED PLOT\n")
+            speed_x_data = deque(maxlen=MAXLEN)
+            speed_y_des_data = deque(maxlen=MAXLEN)
+            speed_y_nav_data = deque(maxlen=MAXLEN)
+            speed_fig, ax = plt.subplots()
+            speed_init_time = time.time()
+            self.speed_plot_animation = FuncAnimation(speed_fig, animate_speed, interval=500)
+            self.active_animations.append(self.speed_plot_animation)
+            plt.show()
+
+        elif plot_type == "HEADING PLOT":
+            print("\nMaking HEADING PLOT\n")
+            heading_x_data = deque(maxlen=MAXLEN)
+            heading_y_des_data = deque(maxlen=MAXLEN)
+            heading_y_nav_data = deque(maxlen=MAXLEN)
+            heading_fig, ax = plt.subplots()
+            heading_init_time = time.time()
+            self.heading_plot_animation = FuncAnimation(heading_fig, animate_heading, interval=500)
+            self.active_animations.append(self.heading_plot_animation)
+            plt.show()
 
     def update_desired_speed(self,_):
         """
@@ -842,8 +1000,9 @@ class App(customtkinter.CTk):
 
         if self.autonomous_control:
             self.speed_progressbar.set(self.controller.nav_speed/self.max_autonomous_speed)
-        #self.label_connection.configure(text=f"Conexão: {self.connection_ok}")
-        self.after(1000,self.update_gui)
+
+        # Configure time to re-update GUI
+        self.after(1000,self.update_gui) # 1sec
 
     def add_visited_point(self):
         """
@@ -853,7 +1012,7 @@ class App(customtkinter.CTk):
         points = (self.controller.nav_lat,self.controller.nav_long)
         if len(self.visited_points) > 0:
             dist = GD(points,tuple(self.last_loc_global)).km 
-            if dist > 0.05: # 50 meters
+            if dist > 0.02: # 50 meters
                 #xy = self.controller.convert_global2local((self.controller.nav_lat,self.controller.nav_long))[0]
                 self.visited_points.append(points)
                 self.last_loc_global = points
