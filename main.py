@@ -1121,9 +1121,11 @@ class App(customtkinter.CTk):
         self.slider_progressbar_frame = customtkinter.CTkFrame(self, fg_color="transparent",width=200,height=200)
         self.slider_progressbar_frame.grid(row=0, column=5, padx=(20, 0), pady=(90, 0), sticky="nsew") #Mexer no pady se quiser abaixar mais o frame
         self.slider_progressbar_frame.grid_columnconfigure(0, weight=1)
+        self.slider_progressbar_frame.grid_columnconfigure(2, weight=1)
         self.slider_progressbar_frame.grid_rowconfigure(5, weight=0)
         self.slider_progressbar_frame.grid_rowconfigure(6, weight=2)
         self.slider_progressbar_frame.grid_rowconfigure(1, weight=1)
+        self.slider_progressbar_frame.grid_rowconfigure(11,weight=1)
         
         #Label do Controle Remoto
         self.label_remote = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text="Controle Remoto")
@@ -1201,6 +1203,29 @@ class App(customtkinter.CTk):
                                        values=["Manual", "Joystick"],
                                        command=self.optionmenu_callback)
         self.combobox.grid(row=10, column=0, rowspan=1,columnspan=2, padx=(5,10), pady=(0,205), sticky="")
+
+        # Set option for Plotting Variables
+
+        self.button_plot_variables = customtkinter.CTkButton(master=self.slider_progressbar_frame,
+                                                text="Plot Variables",
+                                                command=self.toggle_plot_variables)
+        self.button_plot_variables.grid(pady=(5, 5), padx=(5, 5), row=10, column=0)        
+
+        # Creates a listbox for selecting multiple variables to plot
+        self.listbox_selection = ('RUDDER PLOT',
+                                  'DEPTH PLOT')
+
+        var = tkinter.Variable(value=self.listbox_selection)
+        # selecmode can be MULTIPLE, SINGLE
+        self.select_list = tkinter.Listbox(master=self.slider_progressbar_frame,
+                                           listvariable=var,
+                                           height=len(self.listbox_selection),
+                                           selectmode=tkinter.SINGLE)
+        self.select_list.configure(background="#265aad",foreground="white",font=("Segoe UI", 10))
+        self.select_list.grid(pady=(5, 5), padx=(5, 5), row=10, column=1)
+
+        # Binds the variables chosen to an action 
+        self.select_list.bind('<<ListboxSelect>>', self.items_selected) 
 
     def gear_value2text(self):
         """
