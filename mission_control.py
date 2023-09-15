@@ -2,10 +2,6 @@ import pymoos
 import pyproj
 import time
 
-IP_MOOS = "localhost" 
-PORTA_MOOS = 9000
-LOCATION = "MIT"
-
 class MissionControl(pymoos.comms):
 
     def __init__(self, moos_community, moos_port, location):
@@ -23,9 +19,9 @@ class MissionControl(pymoos.comms):
         self.nav_lat = 0
         self.nav_long = 0
         self.nav_yaw = 0 
-        self.nav_heading = 0
         self.nav_speed = 0
         self.nav_depth = 0
+        self.nav_heading = 0
         self.last_ais_msg = None
         self.view_seglist = None
         self.view_point = None
@@ -76,7 +72,9 @@ class MissionControl(pymoos.comms):
         self.register('NAV_LAT', 0)
         self.register('NAV_LONG', 0)
         self.register('NAV_HEADING', 0)
+        self.register('DESIRED_HEADING', 0)
         self.register('NAV_SPEED', 0)
+        self.register('DESIRED_SPEED', 0)
         self.register('NAV_DEPTH', 0)
         self.register('NAV_YAW', 0)
         self.register('MSG_UDP', 0)
@@ -113,10 +111,16 @@ class MissionControl(pymoos.comms):
                 self.nav_long = val
             elif msg.name() == 'NAV_HEADING':
                 self.nav_heading = val
+            elif msg.name() == 'DESIRED_HEADING':
+                self.desired_heading = val
             elif msg.name() == 'NAV_DEPTH':
                 self.nav_depth = val
             elif msg.name() == 'NAV_SPEED':
                 self.nav_speed = val
+            elif msg.name() == 'DESIRED_SPEED':
+                self.desired_speed = val
+            elif msg.name() == 'DESIRED_RUDDER':
+                self.desired_rudder = val
             elif msg.name() == 'VIEW_SEGLIST':
                 val = msg.string()
                 self.view_seglist = val
@@ -188,8 +192,13 @@ class MissionControl(pymoos.comms):
     def convert_global2local(self,points):
         """
         Convert LAT and LONG to local coordinates
+        Returns X, Y local coordinates
         """
-        local_points = [pyproj.transform(self.projection_global, self.projection_local, long, lat) for lat,long in points]
+        try:
+            local_points = [pyproj.transform(self.projection_global, self.projection_local, long, lat) for lat,long in points]
+        except TypeError:
+            points = [points]
+            local_points = [pyproj.transform(self.projection_global, self.projection_local, long, lat) for lat,long in points]
         return local_points
 
     def activate_remote_control(self):
@@ -234,6 +243,9 @@ class MissionControl(pymoos.comms):
         self.notify('DESIRED_SPEED', desired_speed, pymoos.time())
 
 def main():
+    IP_MOOS = "localhost" 
+    PORTA_MOOS = 9000
+    LOCATION = "MIT"
     controller = MissionControl(IP_MOOS, PORTA_MOOS, LOCATION)
 
     global_points = [(43.824840,-70.330388),(43.824853,-70.329767)]
