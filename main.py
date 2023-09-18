@@ -728,7 +728,7 @@ class App(customtkinter.CTk):
             plt.plot(heading_x_data, heading_y_des_data,label="DESIRED_HEADING")
             plt.xlabel('Time [s]')
             plt.ylabel('Value [°]')
-            plt.ylim([-365,365])
+            plt.ylim([0,365])
             plt.legend()
             plt.grid(alpha=ALPHA,linewidth=LINEWIDTH)
             plt.title('Real-time Heading Plot')
