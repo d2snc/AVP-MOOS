@@ -29,6 +29,19 @@ class MissionControl(pymoos.comms):
         self.return_var = None
         self.bhv_settings = None # Current behavior
         self.ivphelm_bhv_active = None 
+        
+        #Control variables
+        #Variables used by planchaPID to adjust control in real time
+        self.heading_kp = 0
+        self.heading_ki = 0
+        self.heading_kd = 0
+        self.speed_kp = 0
+        self.speed_ki = 0
+        self.speed_kd = 0
+        self.constant_heading = False
+        self.setpoint_heading = 0
+        
+        #
 
         self.__set_local_coordinates()
 
@@ -85,6 +98,16 @@ class MissionControl(pymoos.comms):
         self.register('RETURN', 0)
         self.register('DESIRED_RUDDER', 0)
         self.register('DESIRED_THRUST', 0)
+        
+        #Control Parameters variables
+        self.register('SPEED_KP', 0)
+        self.register('SPEED_KI', 0)
+        self.register('SPEED_KD', 0)
+        self.register('HEADING_KP', 0)
+        self.register('HEADING_KI', 0)
+        self.register('HEADING_KD', 0)
+        self.register('CONSTANT_HEADING', 0)
+        self.register('SETPOINT_HEADING', 0)
 
         # Autonomous Navigation Variables
         self.register('VIEW_SEGLIST', 0) 
@@ -141,7 +164,25 @@ class MissionControl(pymoos.comms):
                 print(self.ivphelm_bhv_active)
             elif msg.name() == 'RETURN':
                 val = msg.string()
-                self.return_var = val       
+                self.return_var = val      
+            elif msg.name() == 'HEADING_KP':
+                self.heading_kp = val
+            elif msg.name() == 'HEADING_KI':
+                self.heading_ki = val
+            elif msg.name() == 'HEADING_KD':
+                self.heading_kd = val
+            elif msg.name() == 'SPEED_KP':
+                self.speed_kp = val
+            elif msg.name() == 'SPEED_KI':
+                self.speed_ki = val
+            elif msg.name() == 'SPEED_KD':
+                self.speed_kd = val  
+            elif msg.name() == 'CONSTANT_HEADING':
+                self.constant_heading = val
+            elif msg.name() == 'SETPOINT_HEADING':
+                self.setpoint_heading = val       
+            
+                  
 
         return True
     
