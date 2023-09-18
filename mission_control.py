@@ -86,6 +86,7 @@ class MissionControl(pymoos.comms):
         self.register('NAV_LONG', 0)
         self.register('NAV_HEADING', 0)
         self.register('DESIRED_HEADING', 0)
+        self.register('DESIRED_RUDDER', 0)
         self.register('NAV_SPEED', 0)
         self.register('DESIRED_SPEED', 0)
         self.register('NAV_DEPTH', 0)
@@ -136,12 +137,18 @@ class MissionControl(pymoos.comms):
                 self.nav_heading = val
             elif msg.name() == 'DESIRED_HEADING':
                 self.desired_heading = val
+            elif msg.name() == 'SETPOINT_HEADING':
+                self.setpoint_heading = val
+            elif msg.name() == 'DESIRED_RUDDER':
+                self.desired_rudder = val
             elif msg.name() == 'NAV_DEPTH':
                 self.nav_depth = val
             elif msg.name() == 'NAV_SPEED':
                 self.nav_speed = val
             elif msg.name() == 'DESIRED_SPEED':
                 self.desired_speed = val
+            elif msg.name() == 'DESIRED_THRUST':
+                self.desired_thrust = val
             elif msg.name() == 'DESIRED_RUDDER':
                 self.desired_rudder = val
             elif msg.name() == 'VIEW_SEGLIST':
