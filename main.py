@@ -35,6 +35,10 @@ PORTA_MOOS = 9000
 #LOCATION = "Salvador"
 LOCATION = "Rio de Janeiro"
 #LOCATION = "MIT"
+"""
+xdiff = 
+ydiff = 
+"""
 
 # AIS configuration
 ip_address = '201.76.184.242' 
@@ -61,18 +65,10 @@ Variables for Kp, Ki and Kd control
 MAX_HEADING_KP = 5
 MAX_HEADING_KI = 3
 MAX_HEADING_KD = 1
-HEADING_KP = 5
-HEADING_KI = 3
-HEADING_KD = 1
-
 
 MAX_SPEED_KP = 50
 MAX_SPEED_KI = 3
 MAX_SPEED_KD = 1
-SPEED_KP = 50
-SPEED_KI = 3
-SPEED_KD = 1
-
 
 CONNECTION_OK_COLOR = "#56a152"
 CONNECTION_NOT_OK_COLOR = "#bf7258"
@@ -1687,7 +1683,6 @@ class App(customtkinter.CTk):
 
     def start(self):
         self.mainloop()
-
 
 if __name__ == "__main__":
     app = App()

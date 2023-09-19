@@ -1,6 +1,11 @@
 import pymoos
 import pyproj
 import time
+import os
+
+CONTROLLER_PARAMS_PATH = "/home/dueiras/VSNT/moos-ivp-vsnt/src/planchaPID"
+SPEED_PID_FILE = "speed_pid_parameters.txt"
+HEADING_PID_FILE = "heading_pid_parameters.txt"
 
 class MissionControl(pymoos.comms):
 
@@ -32,12 +37,9 @@ class MissionControl(pymoos.comms):
         
         #Control variables
         #Variables used by planchaPID to adjust control in real time
-        self.heading_kp = 0
-        self.heading_ki = 0
-        self.heading_kd = 0
-        self.speed_kp = 0
-        self.speed_ki = 0
-        self.speed_kd = 0
+        self.heading_kp, self.heading_ki, self.heading_kd = self.__get_pid_params(HEADING_PID_FILE)
+        self.speed_kp, self.speed_ki, self.speed_kd = self.__get_pid_params(SPEED_PID_FILE)
+
         self.constant_heading = False
         self.setpoint_heading = 0
         
@@ -51,6 +53,42 @@ class MissionControl(pymoos.comms):
 
         self.init_time = pymoos.time()
         print(f"Connection status is: {status} at {self.init_time}")
+
+    def __get_pid_params(self,filename):
+        """
+        Reads the PID configuration file for the controller parameters
+        """
+        KP = None
+        KI = None
+        KD = None
+
+        try:
+            # Open the file for reading
+            with open(os.path.join(CONTROLLER_PARAMS_PATH,filename), 'r') as file:
+                lines = file.readlines()
+
+            # Parse each line to extract PID parameters
+            for line in lines:
+                # Split the line at the equal sign
+                parts = line.strip().split('=')
+                if len(parts) == 2:
+                    param_name = parts[0].strip()
+                    param_value = float(parts[1].strip())
+
+                    # Store the parameter values in the corresponding variables
+                    if param_name == 'KP':
+                        KP = param_value
+                    elif param_name == 'KI':
+                        KI = param_value
+                    elif param_name == 'KD':
+                        KD = param_value
+
+        except Exception as e:
+            # Handle any exceptions that may occur during file reading
+            print(f"Error reading PID parameters: {e}")
+
+        return KP, KI, KD
+
 
     def __set_local_coordinates(self):  
         """
