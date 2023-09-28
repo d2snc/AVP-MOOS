@@ -83,12 +83,12 @@ class MissionControl(pymoos.comms):
                     elif param_name == 'KD':
                         KD = param_value
 
-        except Exception as e:
+        except FileNotFoundError as e:
             # Handle any exceptions that may occur during file reading
             print(f"Error reading PID parameters: {e}")
+            return 0, 0, 0
 
         return KP, KI, KD
-
 
     def __set_local_coordinates(self):  
         """
@@ -263,10 +263,10 @@ class MissionControl(pymoos.comms):
         """
         Communicates pHelmIvP to stop the autonomous path
         """
+        self.notify('FEEDBACK_MSG', 'completed',pymoos.time())
         self.notify('END', 'true',pymoos.time())
         self.notify('RETURN', 'true',pymoos.time())
         self.notify('MOOS_MANUAL_OVERIDE', 'true',pymoos.time())
-        self.notify('FEEDBACK_MSG', 'completed',pymoos.time())
 
     def convert_local2global(self,points):
         """
@@ -327,6 +327,9 @@ class MissionControl(pymoos.comms):
         <desired_speed> in meters/s
         """
         self.notify('DESIRED_SPEED', desired_speed, pymoos.time())
+
+    def lawnmower(self, speed, x0, y0, width, height, lane_width):
+        pass
 
 def main():
     IP_MOOS = "localhost" 
