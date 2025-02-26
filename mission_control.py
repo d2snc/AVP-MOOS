@@ -105,6 +105,9 @@ class MissionControl(pymoos.comms):
         elif self.location == "MIT":
             self.LatOrigin  = 43.825300 
             self.LongOrigin = -70.330400 
+        elif self.location == "Morgan City":
+            self.LatOrigin  = 29.71970895316288 
+            self.LongOrigin = -91.14705165281887
 
         self.projection_local = pyproj.Proj(proj='aeqd', ellps='WGS84',
                                 datum='WGS84', lat_0=self.LatOrigin, lon_0=self.LongOrigin)

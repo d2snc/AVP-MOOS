@@ -1,0 +1,2 @@
+[console_scripts]
+ais-decode = pyais.main:main
