@@ -129,6 +129,7 @@ class MissionControl(pymoos.comms):
         self.register('DESIRED_HEADING', 0)
         self.register('DESIRED_RUDDER', 0)
         self.register('NAV_SPEED', 0)
+        self.register('NAV_SPEED_OVER_GROUND', 0)
         self.register('DESIRED_SPEED', 0)
         self.register('NAV_DEPTH', 0)
         self.register('NAV_YAW', 0)
@@ -329,7 +330,8 @@ class MissionControl(pymoos.comms):
         Set the desired_speed for the controller 
         <desired_speed> in meters/s
         """
-        self.notify('DESIRED_SPEED', desired_speed, pymoos.time())
+        #self.notify('DESIRED_SPEED', desired_speed, pymoos.time())
+        self.notify('WPT_UPDATE', f"speed={desired_speed}", pymoos.time())
 
     def lawnmower(self, speed, x0, y0, width, height, lane_width):
         pass

@@ -168,11 +168,6 @@ class App(customtkinter.CTk):
                                                 command=self.trajectory_plot)
         self.trajectory_button.grid(pady=(20, 0), padx=(20, 20), row=6, column=0)
 
-        self.plot_sonar_button = customtkinter.CTkButton(master=self.frame_left,
-                                                text="Sonar Plot",
-                                                command=self.receive_sonar)
-        self.plot_sonar_button.grid(pady=(20, 0), padx=(20, 20), row=7, column=0)
-
         #Texto da Latitude
 
         self.label_lat = customtkinter.CTkLabel(master=self.frame_left, text="Latitude: "+str(self.controller.nav_lat))
@@ -275,8 +270,8 @@ class App(customtkinter.CTk):
                                             pass_coords=True)
         
         #Varredura sonar
-        self.map_widget.add_right_click_menu_command(label="Add Sonar Sweep",
-                                            command=self.add_sonar_sweep,
+        self.map_widget.add_right_click_menu_command(label="Add Base",
+                                            command=self.add_base,
                                             pass_coords=True)
 
         
@@ -391,11 +386,11 @@ class App(customtkinter.CTk):
         """
         if len(self.visited_points) > 1:
             if self.trajectory_plot_is_toggled:
-                self.trajectory_button.configure(text="Plot Trajetória")
+                self.trajectory_button.configure(text="Plot Trajectory")
                 self.trajectory_plot_is_toggled = False
                 self.path_trajectory.delete()
             else:
-                self.trajectory_button.configure(text="Remove Trajetória")
+                self.trajectory_button.configure(text="Remove Trajectory")
                 self.trajectory_plot_is_toggled = True
                 self.path_trajectory = self.map_widget.set_path(self.visited_points, color='yellow',width=0.5)
 
@@ -500,66 +495,6 @@ class App(customtkinter.CTk):
             # Ploto a derrota no mapa
             #path_1 = self.map_widget.set_path([self.marker_autonomous_list[0].position, self.marker_autonomous_list[1].position, (-43.15947614659043, -22.911947446774985), (-43.15947564792508, -22.908967568090326)])
 
-    #Adiciona a varredura sonar no mapa
-    def add_sonar_sweep(self,coords):
-        
-        #Transformo coordenadas globais em locais
-        
-        x, y = pyproj.transform(self.projection_global, self.projection_local, coords[1], coords[0])
-        
-        string_varredura_inicial='points=format=lawnmower,x='+str(round(x,2))+',y='+str(round(y,2))+',degs=0,height=500,width=1800,lane_width=150'
-        print(string_varredura_inicial)
-        #Envia a varredura sonar para o MOOS
-        self.controller.notify('WPT_UPDATE', string_varredura_inicial,pymoos.time())
-        
-        print("Enviado para o MOOS -> WPT_UPDATE="+string_varredura_inicial)
-        
-        #Inicia e depois para
-        if self.deploy == 'false' or self.return_var == 'true':
-            self.controller.notify('DEPLOY', 'true',pymoos.time())
-            self.controller.notify('MOOS_MANUAL_OVERIDE', 'false',pymoos.time())
-            self.controller.notify('RETURN', 'false',pymoos.time())
-        self.controller.notify('END', 'false',pymoos.time())
-        #Caso não atualize a varredura, aumentar o delay aqui
-        time.sleep(1)
-        self.controller.notify('END', 'true',pymoos.time())
-        
-        #Após enviar atualiza os pontos na tela
-        
-        #Deleta pontos de indicação da derrota
-        for marker in self.marker_autonomous_list:
-            marker.delete()
-            
-        #Deleta o caminho do mapa
-        self.map_widget.delete_all_path()
-        
-        #Limpo a lista self.pontos_autonomos
-        self.autonomous_points = []
-        
-        #Pega os pontos da variável e cria a nova derrota
-        if self.view_seglist is not None: #Checa se a lista não está vazia
-            #Extrair coordenadas da self.view_seglist
-            start_index = self.view_seglist.find("pts={") + len("pts={")
-            end_index = self.view_seglist.find("}")
-            pts_string = self.view_seglist[start_index:end_index]
-            points = pts_string.split(":")
-
-            # Converte os pontos para coordenadas de mapa e armazena
-            
-            for match in points:
-                match = match.split(",")
-                #Conversão de coordenadas locais para globais
-                inv_longitude, inv_latitude = pyproj.transform(self.projection_local, self.projection_global, float(match[0])-self.diff_x, float(match[1])-self.diff_y)
-
-                #Adiciono os pontos na lista
-                self.autonomous_points.append((inv_latitude, inv_longitude))
-                
-            #Defino o caminho
-            self.path_autonomous = self.map_widget.set_path(self.autonomous_points)
-
-            #Definindo pontos da derrota como markers
-            for ponto in self.autonomous_points:
-                self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1], text="#"+str(self.autonomous_points.index(ponto)+1)+" Ponto de derrota autônoma"))
 
     def add_autonomous_point(self,coords):
         """
@@ -579,8 +514,19 @@ class App(customtkinter.CTk):
         #Só adiciona pontos que não estão na lista
         for ponto in self.autonomous_points:
             if ponto not in self.marker_autonomous_list:
-                self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1], text="#"+str(self.autonomous_points.index(ponto)+1)+" Ponto de derrota autônoma"))
+                self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1], text="#"+str(self.autonomous_points.index(ponto)+1)+" Autonomous Waypoint"))
 
+    def add_base(self,coords):
+        """
+        Add a point to be the base of the USV
+        """
+        self.base_coords = coords
+        base_image = ImageTk.PhotoImage(Image.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "images", "home-icon.png")).resize((70, 70)))
+        base_marker = self.map_widget.set_marker(coords[0], coords[1], text="USV Base",image=base_image)
+        
+
+
+    
     def destroy_autonomous(self):
         """
         Destroys the GUI for the autonomous navigation
@@ -646,21 +592,27 @@ class App(customtkinter.CTk):
                                                 command=self.clean_last_autonomous)
         self.button_remove_ultimo.grid(pady=(15, 5), padx=(35, 60), row=2, column=1)
 
+        self.button_remove_ultimo = customtkinter.CTkButton(master=self.slider_progressbar_frame1,
+                                                text="Return to the Base",
+                                                command=self.return_to_base)
+        self.button_remove_ultimo.grid(pady=(15, 5), padx=(60, 60), row=3, column=0)
+
+
         # Set desired speed for autonomous controller
 
         self.label_desired_speed = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text=f"Desired Speed: {float(self.autonomous_speed)}knots")
         self.label_desired_speed.configure(font=("Segoe UI", 20))
-        self.label_desired_speed.grid(row=3, column=0, columnspan=2, padx=0, pady=(15,5), sticky="")
+        self.label_desired_speed.grid(row=4, column=0, columnspan=2, padx=0, pady=(15,5), sticky="")
         
         self.slider_speed = customtkinter.CTkSlider(self.slider_progressbar_frame1, from_=0, 
                                                     to=self.max_autonomous_speed, 
                                                     number_of_steps=self.max_autonomous_speed*2)
-        self.slider_speed.grid(row=4, column=0, columnspan=2, padx=(50, 50), pady=(15, 5), sticky="ew")
+        self.slider_speed.grid(row=5, column=0, columnspan=2, padx=(50, 50), pady=(15, 5), sticky="ew")
         self.slider_speed.configure(command=self.update_desired_speed)
         self.slider_speed.set(self.autonomous_speed)
 
         self.speed_progressbar = customtkinter.CTkProgressBar(master=self.slider_progressbar_frame1,width=300)
-        self.speed_progressbar.grid(row=5, column=0, columnspan=2, padx=(50, 50), pady=(15, 15), sticky="ew")
+        self.speed_progressbar.grid(row=6, column=0, columnspan=2, padx=(50, 50), pady=(15, 15), sticky="ew")
         self.speed_progressbar.set(self.controller.nav_speed/self.max_autonomous_speed)
 
         # Set option for Plotting Variables
@@ -668,7 +620,7 @@ class App(customtkinter.CTk):
         self.button_plot_variables = customtkinter.CTkButton(master=self.slider_progressbar_frame1,
                                                 text="Plot Variables",
                                                 command=self.toggle_plot_variables)
-        self.button_plot_variables.grid(pady=(5, 5), padx=(5, 5), row=6, column=0)        
+        self.button_plot_variables.grid(pady=(5, 5), padx=(5, 5), row=7, column=0)        
 
         # Creates a listbox for selecting multiple variables to plot
         self.listbox_selection = ('RUDDER PLOT',
@@ -683,22 +635,22 @@ class App(customtkinter.CTk):
                                            height=len(self.listbox_selection),
                                            selectmode=tkinter.SINGLE)
         self.select_list.configure(background="#265aad",foreground="white",font=("Segoe UI", 10))
-        self.select_list.grid(pady=(5, 5), padx=(5, 5), row=6, column=1)
+        self.select_list.grid(pady=(5, 5), padx=(5, 5), row=8, column=1)
 
         # Binds the variables chosen to an action 
         self.select_list.bind('<<ListboxSelect>>', self.items_selected) 
         
         #Heading automático
         self.checkbox_heading = customtkinter.CTkCheckBox(master=self.slider_progressbar_frame1, text="Constant Heading", variable=self.check_var_constantheading, onvalue="on", offvalue="off")
-        self.checkbox_heading.grid(row=7, column=0, columnspan=2, padx=(20, 20), pady=(5, 5))
+        self.checkbox_heading.grid(row=9, column=0, columnspan=2, padx=(20, 20), pady=(5, 5))
         self.checkbox_heading.configure(command=self.update_auto_heading)
         
         self.label_setpoint_heading = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text=f"Heading: {round(float(self.controller.setpoint_heading),2)}")
         self.label_setpoint_heading.configure(font=("Segoe UI", 20))
-        self.label_setpoint_heading.grid(row=8, column=0, columnspan=2, padx=(10,0), pady=(0,5), sticky="")
+        self.label_setpoint_heading.grid(row=10, column=0, columnspan=2, padx=(10,0), pady=(0,5), sticky="")
 
         self.slider_setpoint_heading = customtkinter.CTkSlider(self.slider_progressbar_frame1, from_=0, to=360, number_of_steps=360)
-        self.slider_setpoint_heading.grid(row=9, column=0, columnspan=2, padx=0, pady=(5, 5), sticky="ew")
+        self.slider_setpoint_heading.grid(row=11, column=0, columnspan=2, padx=0, pady=(5, 5), sticky="ew")
         self.slider_setpoint_heading.configure(command=self.update_setpoint_heading)
         self.slider_setpoint_heading.set(self.controller.heading_kp)
         
@@ -706,65 +658,65 @@ class App(customtkinter.CTk):
         #Label de cima
         self.label_machine1 = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text="PID Heading Control")
         self.label_machine1.configure(font=("Segoe UI", 25))
-        self.label_machine1.grid(row=10, column=0, columnspan=2, padx=(10,20), pady=(10,5), sticky="n")
+        self.label_machine1.grid(row=12, column=0, columnspan=2, padx=(10,20), pady=(10,5), sticky="n")
         
         self.label_heading_kp = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text=f"KP: {self.controller.heading_kp:.2f}")
         self.label_heading_kp.configure(font=("Segoe UI", 20))
-        self.label_heading_kp.grid(row=11, column=0, columnspan=2, padx=(10,0), pady=(0,5), sticky="n")
+        self.label_heading_kp.grid(row=13, column=0, columnspan=2, padx=(10,0), pady=(0,5), sticky="n")
         
         self.slider_heading_kp = customtkinter.CTkSlider(self.slider_progressbar_frame1, from_=0, to=self.max_heading_kp, number_of_steps=200)
-        self.slider_heading_kp.grid(row=12, column=0, columnspan=2, padx=0, pady=(5, 5), sticky="")
+        self.slider_heading_kp.grid(row=14, column=0, columnspan=2, padx=0, pady=(5, 5), sticky="")
         self.slider_heading_kp.configure(command=self.update_heading_kp)
         self.slider_heading_kp.set(self.controller.heading_kp)
         
         self.label_heading_ki = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text=f"KI: {round(float(self.controller.heading_ki),2)}")
         self.label_heading_ki.configure(font=("Segoe UI", 20))
-        self.label_heading_ki.grid(row=13, column=0, columnspan=2, padx=0, pady=(5,5), sticky="")
+        self.label_heading_ki.grid(row=15, column=0, columnspan=2, padx=0, pady=(5,5), sticky="")
         
         self.slider_heading_ki = customtkinter.CTkSlider(self.slider_progressbar_frame1, from_=0, to=self.max_heading_ki, number_of_steps=200)
-        self.slider_heading_ki.grid(row=14, column=0, columnspan=2, padx=0, pady=(5, 5), sticky="")
+        self.slider_heading_ki.grid(row=16, column=0, columnspan=2, padx=0, pady=(5, 5), sticky="")
         self.slider_heading_ki.configure(command=self.update_heading_ki)
         self.slider_heading_ki.set(self.controller.heading_ki)
         
         self.label_heading_kd = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text=f"KD: {round(float(self.controller.heading_kd),2)}")
         self.label_heading_kd.configure(font=("Segoe UI", 20))
-        self.label_heading_kd.grid(row=15, column=0, columnspan=2, padx=0, pady=(5,5), sticky="")
+        self.label_heading_kd.grid(row=17, column=0, columnspan=2, padx=0, pady=(5,5), sticky="")
         
         self.slider_heading_kd = customtkinter.CTkSlider(self.slider_progressbar_frame1, from_=0, to=self.max_heading_kd, number_of_steps=200)
-        self.slider_heading_kd.grid(row=16, column=0, columnspan=2, padx=0, pady=(5, 5), sticky="")
+        self.slider_heading_kd.grid(row=18, column=0, columnspan=2, padx=0, pady=(5, 5), sticky="")
         self.slider_heading_kd.configure(command=self.update_heading_kd)
         self.slider_heading_kd.set(self.controller.heading_kd)
         
-        self.label_machine1 = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text="Controle PID Speed")
-        self.label_machine1.configure(font=("Segoe UI", 25))
-        self.label_machine1.grid(row=17, column=0, columnspan=2, padx=(10,20), pady=(5,5), sticky="n")
+        #self.label_machine1 = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text="Controle PID Speed")
+        #self.label_machine1.configure(font=("Segoe UI", 25))
+        #self.label_machine1.grid(row=17, column=0, columnspan=2, padx=(10,20), pady=(5,5), sticky="n")
         
-        self.label_speed_kp = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text=f"KP: {round(float(self.controller.speed_kp),2)}")
-        self.label_speed_kp.configure(font=("Segoe UI", 20))
-        self.label_speed_kp.grid(row=18, column=0, columnspan=2, padx=(10,0), pady=(0,5), sticky="n")
+        #self.label_speed_kp = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text=f"KP: {round(float(self.controller.speed_kp),2)}")
+        #self.label_speed_kp.configure(font=("Segoe UI", 20))
+        #self.label_speed_kp.grid(row=18, column=0, columnspan=2, padx=(10,0), pady=(0,5), sticky="n")
         
-        self.slider_speed_kp = customtkinter.CTkSlider(self.slider_progressbar_frame1, from_=0, to=self.max_speed_kp, number_of_steps=200)
-        self.slider_speed_kp.grid(row=19, column=0, columnspan=2, padx=0, pady=(5, 5), sticky="")
-        self.slider_speed_kp.configure(command=self.update_speed_kp)
-        self.slider_speed_kp.set(self.controller.speed_kp)
+        #self.slider_speed_kp = customtkinter.CTkSlider(self.slider_progressbar_frame1, from_=0, to=self.max_speed_kp, number_of_steps=200)
+        #self.slider_speed_kp.grid(row=19, column=0, columnspan=2, padx=0, pady=(5, 5), sticky="")
+        #self.slider_speed_kp.configure(command=self.update_speed_kp)
+        #self.slider_speed_kp.set(self.controller.speed_kp)
         
-        self.label_speed_ki = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text=f"KI: {round(float(self.controller.speed_ki),2)}")
-        self.label_speed_ki.configure(font=("Segoe UI", 20))
-        self.label_speed_ki.grid(row=20, column=0, columnspan=2, padx=0, pady=(5,5), sticky="")
+        #self.label_speed_ki = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text=f"KI: {round(float(self.controller.speed_ki),2)}")
+        #self.label_speed_ki.configure(font=("Segoe UI", 20))
+        #self.label_speed_ki.grid(row=20, column=0, columnspan=2, padx=0, pady=(5,5), sticky="")
         
-        self.slider_speed_ki = customtkinter.CTkSlider(self.slider_progressbar_frame1, from_=0, to=self.max_speed_ki, number_of_steps=200)
-        self.slider_speed_ki.grid(row=21, column=0, columnspan=2, padx=0, pady=(5, 5), sticky="")
-        self.slider_speed_ki.configure(command=self.update_speed_ki)
-        self.slider_speed_ki.set(self.controller.speed_ki)
+        #self.slider_speed_ki = customtkinter.CTkSlider(self.slider_progressbar_frame1, from_=0, to=self.max_speed_ki, number_of_steps=200)
+        #self.slider_speed_ki.grid(row=21, column=0, columnspan=2, padx=0, pady=(5, 5), sticky="")
+        #self.slider_speed_ki.configure(command=self.update_speed_ki)
+        #self.slider_speed_ki.set(self.controller.speed_ki)
         
-        self.label_speed_kd = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text=f"KD: {round(float(self.controller.speed_kd),2)}")
-        self.label_speed_kd.configure(font=("Segoe UI", 20))
-        self.label_speed_kd.grid(row=22, column=0, columnspan=2, padx=0, pady=(5,5), sticky="")
+        #self.label_speed_kd = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text=f"KD: {round(float(self.controller.speed_kd),2)}")
+        #self.label_speed_kd.configure(font=("Segoe UI", 20))
+        #self.label_speed_kd.grid(row=22, column=0, columnspan=2, padx=0, pady=(5,5), sticky="")
         
-        self.slider_speed_kd = customtkinter.CTkSlider(self.slider_progressbar_frame1, from_=0, to=self.max_speed_kd, number_of_steps=200)
-        self.slider_speed_kd.grid(row=23, column=0, columnspan=2, padx=0, pady=(5, 5), sticky="")
-        self.slider_speed_kd.configure(command=self.update_speed_kd)
-        self.slider_speed_kd.set(self.controller.speed_kd)
+        #self.slider_speed_kd = customtkinter.CTkSlider(self.slider_progressbar_frame1, from_=0, to=self.max_speed_kd, number_of_steps=200)
+        #self.slider_speed_kd.grid(row=23, column=0, columnspan=2, padx=0, pady=(5, 5), sticky="")
+        #self.slider_speed_kd.configure(command=self.update_speed_kd)
+        #self.slider_speed_kd.set(self.controller.speed_kd)
         
     def toggle_plot_variables(self):
         """
@@ -965,7 +917,7 @@ class App(customtkinter.CTk):
         desired_speed = self.slider_speed.get()
         self.autonomous_speed = desired_speed
         #TODO ver se vai fazer funcionar só mandar a velocidade fixa
-        #self.controller.set_desired_speed(desired_speed)
+        self.controller.set_desired_speed(desired_speed)
         self.label_desired_speed.configure(text=f"Desired Speed: {self.autonomous_speed}knots")
 
     def update_heading_kp(self,value):
@@ -1081,7 +1033,7 @@ class App(customtkinter.CTk):
         self.path_autonomous.set_position_list(self.autonomous_points)
         
         for ponto in self.autonomous_points:
-            self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1], text="#"+str(self.autonomous_points.index(ponto)+1)+" Ponto de derrota autônoma"))
+            self.marker_autonomous_list.append(self.map_widget.set_marker(ponto[0], ponto[1], text="#"+str(self.autonomous_points.index(ponto)+1)+" Autonomous Waypoint"))
     
     def clean_autonomous(self):
         """
@@ -1098,6 +1050,19 @@ class App(customtkinter.CTk):
 
         # Clean list
         self.autonomous_points = []
+
+    def return_to_base(self):
+        """
+        Return to a base selected by the user
+        """
+        local_points = self.controller.convert_global2local(self.base_coords)
+        formatted_points = [f"{x},{y}" for x, y in local_points]
+        result = " : ".join(formatted_points)
+        #Atualiza o ponto de retorno
+        self.controller.notify('RETURN_UPDATE',f"points={result}",pymoos.time())
+        #Envia a variável de retorno 
+        self.controller.notify('RETURN','true',pymoos.time())
+
 
     ###################################################
     ### End of Functions for the Autonomous Control ###
@@ -1304,7 +1269,7 @@ class App(customtkinter.CTk):
         """
         Destroys the GUI for autonomous control
         """
-        self.button_5.configure(command=self.activate_remote_control,text="Controle Remoto")
+        self.button_5.configure(command=self.activate_remote_control,text="Remote Control")
         self.slider_progressbar_frame.destroy()
         self.label_machine.destroy()
         self.label_rudder_value.destroy()
@@ -1344,7 +1309,7 @@ class App(customtkinter.CTk):
         self.slider_progressbar_frame.grid_rowconfigure(11,weight=1)
         
         #Label do Controle Remoto
-        self.label_remote = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text="Controle Remoto")
+        self.label_remote = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text="Remote Control")
         self.label_remote.configure(font=("Segoe UI", 30))
         self.label_remote.grid(row=0, column=0, columnspan=1, padx=(10,0), pady=(10,30), sticky="")
 
@@ -1564,7 +1529,7 @@ class App(customtkinter.CTk):
         self.map_widget.destroy() #Deleta o mapa
         self.entry.destroy() #Deleta a pesquisa
         self.button_6.destroy() #Deleta o botão de pesquisa
-        self.button_4.configure(command=self.open_maps,text="Ativar Mapas") #Configura o botão para ativar os mapas novamente
+        self.button_4.configure(command=self.open_maps,text="Activate Maps") #Configura o botão para ativar os mapas novamente
         #self.frame_right.grid_columnconfigure(3, weight=2) #Configura o grid para que o label da câmera ocupe todo o espaço
         self.label_widget.grid(row=0, rowspan=1, column=1, columnspan=3, sticky="nswe") #Coloco a câmera no centro
 
