@@ -33,8 +33,9 @@ IP_MOOS = "127.0.0.1" # Local
 PORTA_MOOS = 9000
 
 #LOCATION = "Salvador"
-LOCATION = "Rio de Janeiro"
+#LOCATION = "Rio de Janeiro"
 #LOCATION = "MIT"
+LOCATION = "Morgan City"
 """
 xdiff = 
 ydiff = 
