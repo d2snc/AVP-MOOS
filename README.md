@@ -1,5 +1,10 @@
 # AVP-MOOS
 
-Versão do AVP criada para ser utilizada em conjunto com o MOOS-IvP em uma estrutura de rede.
+AVP-MOOS is a UI created to be used with MOOS-IvP with a more friendly interface than pMarineViewer.
 
-Para executar -> python3 main.py
+To run -> python3 main.py
+
+
+# Requirements
+
+You need to build and install pymoos from this repo -> https://github.com/d2snc/python-moos
