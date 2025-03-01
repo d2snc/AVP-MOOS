@@ -310,6 +310,7 @@ class App(customtkinter.CTk):
         # Variables for plotting the trajectory
         self.autonomous_points = []
         self.pontos_sonar = []
+        self.autonomous_thrust = 0
         self.autonomous_speed = AUTONOMOUS_SPEED  # meters/s
         self.max_autonomous_speed = MAX_AUTONOMOUS_SPEED
         self.visited_points = []
@@ -523,8 +524,6 @@ class App(customtkinter.CTk):
         self.base_coords = coords
         base_image = ImageTk.PhotoImage(Image.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "images", "home-icon.png")).resize((70, 70)))
         base_marker = self.map_widget.set_marker(coords[0], coords[1], text="USV Base",image=base_image)
-        
-
 
     
     def destroy_autonomous(self):
@@ -598,22 +597,22 @@ class App(customtkinter.CTk):
         self.button_remove_ultimo.grid(pady=(15, 5), padx=(60, 60), row=3, column=0)
 
 
-        # Set desired speed for autonomous controller
+        # Set desired thrust for autonomous controller
 
-        self.label_desired_speed = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text=f"Desired Speed: {float(self.autonomous_speed)}knots")
-        self.label_desired_speed.configure(font=("Segoe UI", 20))
-        self.label_desired_speed.grid(row=4, column=0, columnspan=2, padx=0, pady=(15,5), sticky="")
+        self.label_desired_thrust = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text=f"Desired Thrust: {float(self.autonomous_thrust)} %")
+        self.label_desired_thrust.configure(font=("Segoe UI", 20))
+        self.label_desired_thrust.grid(row=4, column=0, columnspan=2, padx=0, pady=(15,5), sticky="")
         
-        self.slider_speed = customtkinter.CTkSlider(self.slider_progressbar_frame1, from_=0, 
-                                                    to=self.max_autonomous_speed, 
-                                                    number_of_steps=self.max_autonomous_speed*2)
-        self.slider_speed.grid(row=5, column=0, columnspan=2, padx=(50, 50), pady=(15, 5), sticky="ew")
-        self.slider_speed.configure(command=self.update_desired_speed)
-        self.slider_speed.set(self.autonomous_speed)
+        self.slider_thrust = customtkinter.CTkSlider(self.slider_progressbar_frame1, from_=0, 
+                                                    to=100, 
+                                                    number_of_steps=200)
+        self.slider_thrust.grid(row=5, column=0, columnspan=2, padx=(50, 50), pady=(15, 5), sticky="ew")
+        self.slider_thrust.configure(command=self.update_desired_thrust)
+        self.slider_thrust.set(self.autonomous_thrust)
 
         self.speed_progressbar = customtkinter.CTkProgressBar(master=self.slider_progressbar_frame1,width=300)
         self.speed_progressbar.grid(row=6, column=0, columnspan=2, padx=(50, 50), pady=(15, 15), sticky="ew")
-        self.speed_progressbar.set(self.controller.nav_speed/self.max_autonomous_speed)
+        self.speed_progressbar.set(self.controller.desired_thrust/100)
 
         # Set option for Plotting Variables
 
@@ -909,16 +908,16 @@ class App(customtkinter.CTk):
             plt.show()
 
     #TODO
-    def update_desired_speed(self,_):
+    def update_desired_thrust(self,_):
         """
-        Updates GUI of desired speed in the autonomous menu and notifies the controller
-        of the new desired speed for the autonomous path
+        Updates GUI of desired thrust in the autonomous menu and notifies the controller
+        of the new desired thrust for the autonomous path
         """
-        desired_speed = self.slider_speed.get()
-        self.autonomous_speed = desired_speed
+        desired_thrust = self.slider_thrust.get()
+        self.autonomous_thrust = desired_thrust
         #TODO ver se vai fazer funcionar só mandar a velocidade fixa
-        self.controller.set_desired_speed(desired_speed)
-        self.label_desired_speed.configure(text=f"Desired Speed: {self.autonomous_speed}knots")
+        self.controller.notify_thruster(desired_thrust)
+        self.label_desired_thrust.configure(text=f"Desired Thrust: {self.autonomous_thrust} %")
 
     def update_heading_kp(self,value):
         """
@@ -1326,7 +1325,7 @@ class App(customtkinter.CTk):
         self.bind("a", self.forward_gear)   
 
         #Label do Leme
-        self.label_rudder = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text="Leme")
+        self.label_rudder = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text="Rudder")
         self.label_rudder.configure(font=("Segoe UI", 20))
         self.label_rudder.grid(row=3, column=0, columnspan=1, padx=(10,0), pady=(10,20), sticky="")
 
@@ -1339,7 +1338,7 @@ class App(customtkinter.CTk):
         self.bind("<Right>", self.increment_rudder_slider)
 
         #Label de Máquina
-        self.label_thrust = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text="Máquina")
+        self.label_thrust = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text="Thrust")
         self.label_thrust.configure(font=("Segoe UI", 20))
         self.label_thrust.grid(row=1, column=0, columnspan=1, padx=(190,0), pady=(20,20), sticky="")
 
