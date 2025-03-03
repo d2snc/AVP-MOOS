@@ -1313,15 +1313,15 @@ class App(customtkinter.CTk):
         self.label_remote.grid(row=0, column=0, columnspan=1, padx=(10,0), pady=(10,30), sticky="")
 
         #Label de Marcha
-        self.label_gear = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text="Marcha")
+        self.label_gear = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text="Gear")
         self.label_gear.configure(font=("Segoe UI", 20))
         self.label_gear.grid(row=3, column=3, columnspan=1, padx=(5,0), pady=(10,20), sticky="")
 
         self.gear_slider = customtkinter.CTkSlider(master=self.slider_progressbar_frame, from_=-1, to=1, number_of_steps=2, orientation="vertical",height=100)
         self.gear_slider.grid(row=0, column=3, rowspan=5, padx=(10, 15), pady=(20, 10))
 
-        self.bind("d", self.backward_gear)
-        self.bind("s", self.neutral_gear)
+        self.bind("r", self.backward_gear)
+        self.bind("n", self.neutral_gear)
         self.bind("a", self.forward_gear)   
 
         #Label do Leme
@@ -1411,7 +1411,7 @@ class App(customtkinter.CTk):
         """
         Converts the GUI value of Gear to the corresponded gear configuration in text
         """
-        dict_gear_value = {1:"Avante",0:"Neutro",-1:"Ré"}
+        dict_gear_value = {1:"Ahead",0:"Neutral",-1:"Reverse"}
         gear_str = str(dict_gear_value[int(self.gear_slider.get())])
         return gear_str
 
@@ -1515,10 +1515,18 @@ class App(customtkinter.CTk):
             self.label_gear_value.configure(text=self.gear_value2text())
 
             #self.label_machine.configure(text=str(value_thrust)+"%")
+            
+            #Mods to Morgan City Demo
+            if value_gear == 2:
+                gear = "A" #Coloco o valor para ser ahead
+            elif value_gear == 1:
+                gear = "R"
+            elif value_gear == 0:
+                gear = "N"
 
             if self.manual_control is True:
-                self.controller.notify_gear(value_gear)
-                print("DESIRED_GEAR: ", value_gear)
+                self.controller.notify_gear(gear)
+                print("DESIRED_GEAR: ", gear)
 
     ###################################################
     ### End of the functions for the Remote Control ###
