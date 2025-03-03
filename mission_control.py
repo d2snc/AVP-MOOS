@@ -34,6 +34,7 @@ class MissionControl(pymoos.comms):
         self.return_var = None
         self.bhv_settings = None # Current behavior
         self.ivphelm_bhv_active = None 
+        self.desired_thrust = 0
         
         #Control variables
         #Variables used by planchaPID to adjust control in real time

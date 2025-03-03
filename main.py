@@ -61,6 +61,10 @@ MAX_SPEED_KP = 20
 MAX_SPEED_KI = 5
 MAX_SPEED_KD = 2
 
+INITIAL_KP_VALUE = 0.9
+INITIAL_KI_VALUE = 0.0
+INITIAL_KD_VALUE = 0.2
+
 CONNECTION_OK_COLOR = "#56a152"
 CONNECTION_NOT_OK_COLOR = "#bf7258"
 
@@ -685,6 +689,26 @@ class App(customtkinter.CTk):
         self.slider_heading_kd.grid(row=18, column=0, columnspan=2, padx=0, pady=(5, 5), sticky="")
         self.slider_heading_kd.configure(command=self.update_heading_kd)
         self.slider_heading_kd.set(self.controller.heading_kd)
+
+        #Update the values for the PID Control for initial values for the USV
+        
+        #Initial values for the PID Control
+        self.controller.notify('HEADING_KP',INITIAL_KP_VALUE,pymoos.time())
+
+        #Update label
+        self.label_heading_kp.configure(text=f"KP: {INITIAL_KP_VALUE:.3f}")
+
+        #Envio para o MOOS o valor da variável
+        self.controller.notify('HEADING_KI',INITIAL_KI_VALUE,pymoos.time())
+
+        #Update da label
+        self.label_heading_ki.configure(text=f"KI: {INITIAL_KI_VALUE:.3f}")
+
+        #Envio para o MOOS o valor da variável
+        self.controller.notify('HEADING_KD',INITIAL_KD_VALUE,pymoos.time())
+        
+        #Update da label
+        self.label_heading_kd.configure(text=f"KD: {INITIAL_KD_VALUE:.3f}")
         
         #self.label_machine1 = customtkinter.CTkLabel(master=self.slider_progressbar_frame1, text="Controle PID Speed")
         #self.label_machine1.configure(font=("Segoe UI", 25))
@@ -1004,6 +1028,7 @@ class App(customtkinter.CTk):
         """
         self.controller.set_navigation_path(self.autonomous_points, self.autonomous_speed)
         self.update_active_autonomous_point()
+
 
     def stop_autonomous(self):
         """
