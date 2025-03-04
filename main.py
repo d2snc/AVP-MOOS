@@ -938,11 +938,15 @@ class App(customtkinter.CTk):
         Updates GUI of desired thrust in the autonomous menu and notifies the controller
         of the new desired thrust for the autonomous path
         """
-        desired_thrust = self.slider_thrust.get()
-        self.autonomous_thrust = desired_thrust
-        #TODO ver se vai fazer funcionar só mandar a velocidade fixa
-        self.controller.notify_thruster(desired_thrust)
-        self.label_desired_thrust.configure(text=f"Desired Thrust: {self.autonomous_thrust} %")
+        #Only sends if Stop is not pressed
+        if self.autonomous_control == True:
+            desired_thrust = self.slider_thrust.get()
+            self.autonomous_thrust = desired_thrust
+            #TODO ver se vai fazer funcionar só mandar a velocidade fixa
+            self.controller.notify_thruster(desired_thrust)
+            self.label_desired_thrust.configure(text=f"Desired Thrust: {self.autonomous_thrust} %")
+        else:
+            pass
 
     def update_heading_kp(self,value):
         """
@@ -1027,6 +1031,8 @@ class App(customtkinter.CTk):
         """
         Starts autonomous navigation and notifies MOOS
         """
+        #Set variable for autonomous control for True
+        self.autonomous_control = True
         self.controller.set_navigation_path(self.autonomous_points, self.autonomous_speed)
         self.update_active_autonomous_point()
 
@@ -1035,8 +1041,19 @@ class App(customtkinter.CTk):
         """
         Stop the autonomous control without activating Station-Keep
         """
+        #Set variable for autonomous control for false
+        self.autonomous_control = False
+
+        #Update values in the desired_thrust slider
+        self.slider_thrust.set(0)
+        self.speed_progressbar.set(0)
+        self.autonomous_thrust = 0
+
+        #Stops everything
         self.controller.stop_autonomous_navigation()
         self.controller.emergency_stop()
+
+        
         
     def clean_last_autonomous(self):
         """
@@ -1421,7 +1438,7 @@ class App(customtkinter.CTk):
         self.label_gear_value.grid(row=0, column=3, columnspan=1, padx=(5,15), pady=(5,5), sticky="n")   
         
         #Texto
-        self.label_control = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text="Modo de controle")
+        self.label_control = customtkinter.CTkLabel(master=self.slider_progressbar_frame, text="Control Mode")
         self.label_control.configure(font=("Segoe UI", 25))
         self.label_control.grid(row=9, column=0, rowspan=1, columnspan=2, padx=(5,10), pady=(60,15), sticky="")
         
