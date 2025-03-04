@@ -1095,6 +1095,10 @@ class App(customtkinter.CTk):
     def stop_all(self):
         #Stop sending commands for the CAN
         if self.check_var.get() == "on":
+            #Sent commands to stop
+            self.controller.notify('DESIRED_RUDDER',0,pymoos.time())
+            self.controller.notify('DESIRED_THRUST',0,pymoos.time())
+            
             self.controller.notify('DEPLOY','false',pymoos.time())
             self.controller.notify('MOOS_MANUAL_OVERIDE','false',pymoos.time())
         else:
