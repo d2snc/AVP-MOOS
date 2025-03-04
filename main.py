@@ -19,6 +19,7 @@ from pyais import decode
 from PIL import ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 from mission_control import MissionControl
+from tkinter import messagebox
 
 #mpl.style.use('seaborn')
 plt.style.use('dark_background')
@@ -280,7 +281,7 @@ class App(customtkinter.CTk):
 
         
         #Safe Lock that Stops All
-        self.checkbox = customtkinter.CTkCheckBox(master=self.frame_left, text="STOP ALL", command=self.stop_all,variable=self.check_var, onvalue="on", offvalue="off")
+        self.checkbox = customtkinter.CTkCheckBox(master=self.frame_left, text="DISCONNECT", command=self.stop_all,variable=self.check_var, onvalue="on", offvalue="off")
         self.checkbox.grid(row=18, column=0, padx=(20, 20), pady=(10, 20))
 
         ###Imagem da camera
@@ -1091,19 +1092,26 @@ class App(customtkinter.CTk):
     ###################################################
     ### End of Functions for the Autonomous Control ###
     ###################################################
-    
+
     def stop_all(self):
-        #Stop sending commands for the CAN
-        if self.check_var.get() == "on":
-            #Sent commands to stop
-            self.controller.notify('DESIRED_GEAR',"N",pymoos.time())
-            self.controller.notify('DESIRED_RUDDER',0,pymoos.time())
-            self.controller.notify('DESIRED_THRUST',0,pymoos.time())
-            
-            self.controller.notify('DEPLOY','false',pymoos.time())
-            self.controller.notify('MOOS_MANUAL_OVERIDE','false',pymoos.time())
+
+        if self.check_var.get() == "off":
+            self.controller.notify('DEPLOY', 'true', pymoos.time())
         else:
-            self.controller.notify('DEPLOY','true',pymoos.time())
+            # Show confirmation popup
+            response = messagebox.askyesno("Confirm Action", "Do you really want to disconnect?")
+
+            if response:  # If "Yes" is clicked
+                self.check_var.set("on")  # Update checkbox state (optional)
+                self.controller.notify('DESIRED_GEAR', "N", pymoos.time())
+                self.controller.notify('DESIRED_RUDDER', 0, pymoos.time())
+                self.controller.notify('DESIRED_THRUST', 0, pymoos.time())
+
+                self.controller.notify('DEPLOY', 'false', pymoos.time())
+                self.controller.notify('MOOS_MANUAL_OVERIDE', 'false', pymoos.time())
+            else:  # If "No" is clicked
+                pass #Do nothin
+
 
     def update_lista_praticagem(self): 
         #Atualiza a lista de ctts AIS q vem da praticagem - Lembrar sempre de executar funções no final do programa
