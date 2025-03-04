@@ -1110,6 +1110,7 @@ class App(customtkinter.CTk):
                 self.controller.notify('DEPLOY', 'false', pymoos.time())
                 self.controller.notify('MOOS_MANUAL_OVERIDE', 'false', pymoos.time())
             else:  # If "No" is clicked
+                self.check_var.set("off")
                 pass #Do nothin
 
 
