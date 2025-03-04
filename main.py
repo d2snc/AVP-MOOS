@@ -1048,6 +1048,7 @@ class App(customtkinter.CTk):
         self.slider_thrust.set(0)
         self.speed_progressbar.set(0)
         self.autonomous_thrust = 0
+        self.label_desired_thrust.configure(text=f"Desired Thrust: {self.autonomous_thrust} %")
 
         #Stops everything
         self.controller.stop_autonomous_navigation()
