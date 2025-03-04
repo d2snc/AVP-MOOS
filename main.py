@@ -1096,6 +1096,7 @@ class App(customtkinter.CTk):
         #Stop sending commands for the CAN
         if self.check_var.get() == "on":
             #Sent commands to stop
+            self.controller.notify('DESIRED_GEAR',"N",pymoos.time())
             self.controller.notify('DESIRED_RUDDER',0,pymoos.time())
             self.controller.notify('DESIRED_THRUST',0,pymoos.time())
             
