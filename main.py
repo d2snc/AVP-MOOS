@@ -279,9 +279,9 @@ class App(customtkinter.CTk):
                                             pass_coords=True)
 
         
-        #Botão que liga/desliga AIS da praticagem
-        #self.checkbox = customtkinter.CTkCheckBox(master=self.frame_left, text="AIS Praticagem", command=self.update_lista_praticagem,variable=self.check_var, onvalue="on", offvalue="off")
-        #self.checkbox.grid(row=18, column=0, padx=(20, 20), pady=(10, 20))
+        #Safe Lock that Stops All
+        self.checkbox = customtkinter.CTkCheckBox(master=self.frame_left, text="STOP ALL", command=self.stop_all,variable=self.check_var, onvalue="on", offvalue="off")
+        self.checkbox.grid(row=18, column=0, padx=(20, 20), pady=(10, 20))
 
         ###Imagem da camera
         self.vid = cv2.VideoCapture('teste.mp4')
@@ -1092,6 +1092,14 @@ class App(customtkinter.CTk):
     ### End of Functions for the Autonomous Control ###
     ###################################################
     
+    def stop_all(self):
+        #Stop sending commands for the CAN
+        if self.check_var.get() == "on":
+            self.controller.notify('DEPLOY','false',pymoos.time())
+            self.controller.notify('MOOS_MANUAL_OVERIDE','false',pymoos.time())
+        else:
+            self.controller.notify('DEPLOY','true',pymoos.time())
+
     def update_lista_praticagem(self): 
         #Atualiza a lista de ctts AIS q vem da praticagem - Lembrar sempre de executar funções no final do programa
         if self.check_var.get() == "on":
